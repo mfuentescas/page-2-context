@@ -3,6 +3,7 @@ page2context - Capture a webpage (screenshot + DOM) into Markdown outputs
 for use as AI context (GitHub Copilot, Cursor, etc.).
 """
 import argparse
+import ipaddress
 import json
 import math
 import os
@@ -15,7 +16,7 @@ import textwrap
 import traceback
 from typing import NoReturn
 from urllib.parse import urljoin, urlparse
-from urllib.request import Request, urlopen
+from urllib.request import Request
 from playwright.sync_api import sync_playwright, Error as PlaywrightError
 def _load_version() -> str:
     version_file = pathlib.Path(__file__).parent / "VERSION"
@@ -35,6 +36,28 @@ STATE_DIR_ENV = "P2CXT_STATE_DIR"
 STATE_FILE_NAME = "artifact_history.json"
 CHROME_VOLATILE_SINGLETON_FILES = {"SingletonLock", "SingletonCookie", "SingletonSocket"}
 FIREFOX_VOLATILE_FILES = {"lock", ".parentlock", "parent.lock", "places.sqlite-wal", "places.sqlite-shm"}
+
+# Security: only allow http/https for --url to prevent file:// local file reads etc.
+ALLOWED_URL_SCHEMES = {"http", "https"}
+
+# Security: max bytes to download per resource to prevent memory/disk exhaustion (50 MB).
+RESOURCE_MAX_BYTES = 50 * 1024 * 1024  # 50 MB
+
+def _is_private_host(host: str) -> bool:
+    """Return True if host resolves to a private/loopback/link-local/reserved address.
+    Used to block SSRF in resource downloads."""
+    # Strip IPv6 brackets
+    host = host.strip("[]")
+    try:
+        addr = ipaddress.ip_address(host)
+        return (addr.is_private or addr.is_loopback or addr.is_link_local
+                or addr.is_reserved or addr.is_multicast or addr.is_unspecified)
+    except ValueError:
+        # It's a hostname — check for obvious localhost patterns;
+        # full DNS resolution would be needed for complete SSRF protection but
+        # that would require a blocking lookup. We block the most common cases.
+        lower = host.lower()
+        return lower == "localhost" or lower.endswith(".local") or lower.endswith(".internal")
 PROFILE_ARG_TO_KEY: dict[str, str] = {
     "chrome_profile_dir":   "chrome",
     "edge_profile_dir":     "edge",
@@ -178,6 +201,12 @@ def parse_args():
         _error_exit(EXIT_BAD_ARGS, "Argument error: only one browser profile flag can be used per run.",
                     hint=f"Received: {flags}")
     _json_mode = args.json
+    if args.url:
+        parsed_url = urlparse(args.url)
+        if parsed_url.scheme.lower() not in ALLOWED_URL_SCHEMES:
+            _error_exit(EXIT_BAD_ARGS,
+                        f"Invalid --url scheme: {parsed_url.scheme!r}. Only http and https are allowed.",
+                        hint="Use --url \"http://...\" or --url \"https://...\"")
     return args
 class _CliArgError(Exception):
     def __init__(self, message: str, **extra):
@@ -301,6 +330,7 @@ def _looks_like_chromium_profile_dir(path: pathlib.Path) -> bool:
             or any(path.glob("Profile *")))
 def _find_firefox_profile_in_root(root: pathlib.Path) -> pathlib.Path | None:
     profiles_ini = root / "profiles.ini"
+    resolved_root = root.resolve()
     if profiles_ini.is_file():
         try:
             is_relative = True
@@ -312,6 +342,12 @@ def _find_firefox_profile_in_root(root: pathlib.Path) -> pathlib.Path | None:
                     value = s.split("=", 1)[1].strip()
                     candidate = (root / value) if is_relative else pathlib.Path(value).expanduser()
                     candidate = candidate.resolve()
+                    # Security: ensure candidate stays within the profile root to prevent
+                    # path traversal attacks via a malicious Path= entry in profiles.ini.
+                    try:
+                        candidate.relative_to(resolved_root)
+                    except ValueError:
+                        continue  # Path escapes root — skip silently
                     if candidate.exists() and candidate.is_dir():
                         return candidate
         except OSError:
@@ -470,18 +506,42 @@ def _extract_resource_candidates_from_html(html: str, base_url: str) -> set[str]
     return candidates
 def _download_resources(urls: list[str], output_dir: pathlib.Path,
                         timeout_seconds: int = 20) -> tuple[list[pathlib.Path], list[str]]:
+    import urllib.request as _urllib_req
+
+    # Security: custom opener that does NOT follow redirects, to prevent SSRF via open redirects.
+    class _NoRedirectHandler(_urllib_req.HTTPRedirectHandler):
+        def redirect_request(self, *args, **kwargs):  # type: ignore[override]
+            return None  # Block all redirects
+
+    opener = _urllib_req.build_opener(_NoRedirectHandler)
+
     downloaded: list[pathlib.Path] = []
     failures: list[str] = []
     for idx, url in enumerate(urls, start=1):
         parsed = urlparse(url)
+
+        # Security: only allow http/https — no file://, ftp://, etc.
+        if parsed.scheme.lower() not in ALLOWED_URL_SCHEMES:
+            failures.append(f"{url} :: blocked: scheme '{parsed.scheme}' not allowed")
+            continue
+
+        # Security: block requests to private/loopback/link-local hosts (SSRF protection).
+        if _is_private_host(parsed.hostname or ""):
+            failures.append(f"{url} :: blocked: private/internal host")
+            continue
+
         suffix = pathlib.Path(parsed.path).suffix.lower()
         if not suffix or len(suffix) > 10 or not re.fullmatch(r"\.[a-z0-9]+", suffix):
             suffix = ".bin"
         target = output_dir / f"{OUTPUT_PREFIX}resource_{idx:03d}{suffix}"
         req = Request(url, headers={"User-Agent": f"page2context/{__version__}"})
         try:
-            with urlopen(req, timeout=timeout_seconds) as response:
-                data = response.read()
+            with opener.open(req, timeout=timeout_seconds) as response:
+                # Security: enforce max download size to prevent memory/disk exhaustion.
+                data = response.read(RESOURCE_MAX_BYTES + 1)
+                if len(data) > RESOURCE_MAX_BYTES:
+                    failures.append(f"{url} :: blocked: response exceeds {RESOURCE_MAX_BYTES // (1024*1024)} MB limit")
+                    continue
             target.write_bytes(data)
             downloaded.append(target)
         except Exception as exc:

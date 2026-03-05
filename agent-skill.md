@@ -244,9 +244,9 @@ p2cxt_context.md:
 4. Read <output_dir>/p2cxt_html.html — contains full DOM HTML
 5. If clean-only mode was requested, report cleaned_files/failed and stop
 6. If enabled, read <output_dir>/p2cxt_console.log for console/navigation/browser errors
-7. If enabled, inspect `chrome_profile.cleaned` to confirm temp-copy cleanup
+7. If enabled, inspect `browser_profile.cleaned` to confirm temp-copy cleanup
 8. If provided, use `resources.files` artifacts (`p2cxt_resource_*`) for CSS/JS inspection
-9. If provided, inspect `script.result` from executed JS
+9. If provided, inspect `script.result` from executed JS (only run trusted JS files)
 10. Use all files to answer the user's question
 11. Be aware the tool cleans previous `p2cxt_*` files in an existing output dir
 ```

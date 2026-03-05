@@ -20,7 +20,7 @@ plus a separate fixed DOM file `p2cxt_html.html`.
 Always add `--json` so you can parse the result reliably.
 
 ```bash
-python page2context.py [--clean-temp] [--url "<URL>"] [--size <WxH>] [--crop <COLSxROWS:TILES>] [--console-log] [--chrome-profile-dir [DIR]] [--run-js-file <PATH>] [--post-load-wait-ms <MS>] [--resources-regex <REGEX>] [--output <DIR>] --json
+python page2context.py [--clean-temp] [--url "<URL>"] [--size <WxH>] [--crop <COLSxROWS:TILES>] [--console-log] [--chrome-profile-dir [DIR] | --firefox-profile-dir [DIR] | --edge-profile-dir [DIR] | --brave-profile-dir [DIR] | --safari-profile-dir [DIR] | --chromium-profile-dir [DIR] | --webkit-profile-dir [DIR]] [--run-js-file <PATH>] [--post-load-wait-ms <MS>] [--resources-regex <REGEX>] [--output <DIR>] --json
 ```
 
 `--url` is required unless using only `--clean-temp`.
@@ -205,9 +205,9 @@ Clean-only success (`--clean-temp` without `--url`):
 4. Read <output_dir>/p2cxt_html.html for full DOM HTML
 5. If clean-only mode was requested, report cleaned_files/failed and stop
 6. If enabled, inspect <output_dir>/p2cxt_console.log for console/navigation/browser errors
-7. If enabled, inspect `chrome_profile.cleaned` to confirm ephemeral copy cleanup
+7. If enabled, inspect `browser_profile.cleaned` to confirm ephemeral copy cleanup
 8. If regex used, inspect `resources.files` and downloaded `p2cxt_resource_*` artifacts
-9. If JS used, inspect `script.result` and context section "Executed JS"
+9. If JS used, inspect `script.result` and context section "Executed JS" (only run trusted JS files)
 10. Use all artifacts to answer layout / CSS / structure questions
 11. Remember: existing `p2cxt_*` files are cleaned at run start in an existing output dir
 ```

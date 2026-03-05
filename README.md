@@ -119,6 +119,18 @@ python page2context.py --url "https://example.com" --firefox-profile-dir ""
 # Use Edge profile
 python page2context.py --url "https://example.com" --edge-profile-dir ""
 
+# Use Brave profile
+python page2context.py --url "https://example.com" --brave-profile-dir ""
+
+# Use Chromium profile
+python page2context.py --url "https://example.com" --chromium-profile-dir ""
+
+# Use Safari profile (macOS only)
+python page2context.py --url "https://example.com" --safari-profile-dir ""
+
+# Use Playwright WebKit profile
+python page2context.py --url "https://example.com" --webkit-profile-dir ""
+
 # Execute custom JavaScript inside the page and wait until it finishes
 python page2context.py --url "https://example.com" --run-js-file "./script.js"
 
@@ -430,6 +442,40 @@ ERROR (3): Could not load URL: https://bad-url.invalid
 | `4` | File I/O error |
 | `5` | Missing Pillow |
 | `99` | Unexpected error |
+
+---
+
+## Security
+
+### `--url` — only `http` and `https` allowed
+
+`--url` rejects any scheme other than `http` or `https` (e.g. `file://`, `ftp://` are blocked).
+This prevents the browser from reading local files or connecting to non-web targets.
+
+### `--resources-regex` — SSRF and size protection
+
+When `--resources-regex` is used, the tool downloads matched resources. The following
+protections are enforced for every download:
+
+- **Scheme check** — only `http`/`https` URLs are downloaded.
+- **Private host block** — requests to loopback (`127.x`), private ranges (`10.x`, `192.168.x`,
+  `172.16-31.x`), link-local (`169.254.x`), `localhost`, `*.local`, and `*.internal` are blocked
+  to prevent Server-Side Request Forgery (SSRF) attacks from a malicious page.
+- **No redirect following** — HTTP redirects are not followed, preventing SSRF via open redirects
+  on public servers that redirect to internal addresses.
+- **50 MB size cap** — each resource download is capped at 50 MB to prevent memory/disk exhaustion.
+
+### `--run-js-file` — executes arbitrary JavaScript
+
+The file passed to `--run-js-file` runs inside the opened page with full browser
+permissions (DOM access, cookies, network). **Only pass files you trust.** Do not
+point this flag at untrusted or user-supplied JS.
+
+### Browser profile flags — original profile is never touched
+
+See [browser profile safety](#with---chrome-profile-dir-configgoogle-chrome----firefox-profile-dir-dir--etc)
+above for a full explanation. The original profile directory is never opened by
+the browser; only a temporary copy is used and it is deleted on exit.
 
 ---
 

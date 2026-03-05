@@ -251,6 +251,7 @@ cleanup() {
 
 mkdir -p "${TMP_DIR}"
 trap 'stop_server; cleanup' EXIT
+export P2CXT_STATE_DIR="${TMP_DIR}/state"
 check_runtime_deps
 start_server
 
@@ -278,14 +279,70 @@ OUT_DIR_TEXT="${TMP_DIR}/run_text"
 run_and_capture OUT EC "${SCRIPT[@]}" --url "${TEST_URL}" --output "${OUT_DIR_TEXT}"
 assert_eq "text exit code is 0" "$EC" "0"
 LINE_COUNT="$(printf '%s\n' "$OUT" | sed '/^$/d' | wc -l | tr -d ' ')"
-assert_eq "text output has 3 lines" "$LINE_COUNT" "3"
+assert_eq "text output has 4 lines" "$LINE_COUNT" "4"
+HISTORY_LINE_SEEN="False"
 while IFS= read -r line; do
   [[ -z "$line" ]] && continue
+  if [[ "$line" == history_file:* ]]; then
+    HISTORY_PATH="${line#history_file: }"
+    [[ "$HISTORY_PATH" == /* ]] && ok "history file path is absolute" || fail "history file path is not absolute"
+    [[ -f "$HISTORY_PATH" ]] && ok "history file exists: $HISTORY_PATH" || fail "history file missing: $HISTORY_PATH"
+    HISTORY_LINE_SEEN="True"
+    continue
+  fi
   [[ "$line" == /* ]] && ok "line is absolute: $line" || fail "line is not absolute: $line"
   [[ -f "$line" ]] && ok "file exists: $line" || fail "file does not exist: $line"
 done <<< "$OUT"
+assert_eq "history_file line present" "$HISTORY_LINE_SEEN" "True"
 
-info "Test 4: crop creates prefixed tiles and reports them"
+info "Test 4: clean-temp alone removes historical artifacts and exits 0"
+OUT_DIR_CLEAN_ONLY_SRC="${TMP_DIR}/run_clean_only_src"
+run_and_capture OUT EC "${SCRIPT[@]}" --url "${TEST_URL}" --output "${OUT_DIR_CLEAN_ONLY_SRC}" --json
+assert_eq "prep clean-only source exit code is 0" "$EC" "0"
+[[ -f "${OUT_DIR_CLEAN_ONLY_SRC}/p2cxt_screenshot.png" ]] && ok "clean-only source screenshot exists" || fail "clean-only source screenshot missing"
+
+run_and_capture OUT EC "${SCRIPT[@]}" --clean-temp --json
+assert_eq "clean-temp only exit code is 0" "$EC" "0"
+assert_eq "clean-temp only status=success" "$(json_field "$OUT" "status")" "success"
+assert_eq "clean-temp only cleaned_files key present" "$(json_has_key "$OUT" "cleaned_files")" "True"
+[[ ! -f "${OUT_DIR_CLEAN_ONLY_SRC}/p2cxt_screenshot.png" ]] && ok "clean-temp removed historical screenshot" || fail "clean-temp did not remove historical screenshot"
+
+info "Test 5: clean-temp with url cleans before capture and continues"
+OUT_DIR_CLEAN_MIX_OLD="${TMP_DIR}/run_clean_mix_old"
+OUT_DIR_CLEAN_MIX_NEW="${TMP_DIR}/run_clean_mix_new"
+run_and_capture OUT EC "${SCRIPT[@]}" --url "${TEST_URL}" --output "${OUT_DIR_CLEAN_MIX_OLD}" --json
+assert_eq "prep clean-mix old exit code is 0" "$EC" "0"
+[[ -f "${OUT_DIR_CLEAN_MIX_OLD}/p2cxt_screenshot.png" ]] && ok "clean-mix old screenshot exists" || fail "clean-mix old screenshot missing"
+
+run_and_capture OUT EC "${SCRIPT[@]}" --clean-temp --url "${TEST_URL}" --output "${OUT_DIR_CLEAN_MIX_NEW}" --json
+assert_eq "clean-temp+url exit code is 0" "$EC" "0"
+assert_eq "clean-temp+url status=success" "$(json_field "$OUT" "status")" "success"
+assert_eq "clean-temp+url cleanup_before_run key present" "$(json_has_key "$OUT" "cleanup_before_run")" "True"
+[[ ! -f "${OUT_DIR_CLEAN_MIX_OLD}/p2cxt_screenshot.png" ]] && ok "clean-temp+url removed old historical screenshot" || fail "clean-temp+url did not remove old historical screenshot"
+[[ -f "${OUT_DIR_CLEAN_MIX_NEW}/p2cxt_screenshot.png" ]] && ok "clean-temp+url created new screenshot" || fail "clean-temp+url new screenshot missing"
+
+info "Test 6: text mode prints created files as absolute paths"
+OUT_DIR_TEXT="${TMP_DIR}/run_text"
+run_and_capture OUT EC "${SCRIPT[@]}" --url "${TEST_URL}" --output "${OUT_DIR_TEXT}"
+assert_eq "text exit code is 0" "$EC" "0"
+LINE_COUNT="$(printf '%s\n' "$OUT" | sed '/^$/d' | wc -l | tr -d ' ')"
+assert_eq "text output has 4 lines" "$LINE_COUNT" "4"
+HISTORY_LINE_SEEN="False"
+while IFS= read -r line; do
+  [[ -z "$line" ]] && continue
+  if [[ "$line" == history_file:* ]]; then
+    HISTORY_PATH="${line#history_file: }"
+    [[ "$HISTORY_PATH" == /* ]] && ok "history file path is absolute" || fail "history file path is not absolute"
+    [[ -f "$HISTORY_PATH" ]] && ok "history file exists: $HISTORY_PATH" || fail "history file missing: $HISTORY_PATH"
+    HISTORY_LINE_SEEN="True"
+    continue
+  fi
+  [[ "$line" == /* ]] && ok "line is absolute: $line" || fail "line is not absolute: $line"
+  [[ -f "$line" ]] && ok "file exists: $line" || fail "file does not exist: $line"
+done <<< "$OUT"
+assert_eq "history_file line present" "$HISTORY_LINE_SEEN" "True"
+
+info "Test 7: crop creates prefixed tiles and reports them"
 OUT_DIR_CROP="${TMP_DIR}/run_crop"
 run_and_capture OUT EC "${SCRIPT[@]}" --url "${TEST_URL}" --output "${OUT_DIR_CROP}" --crop "2x2:1,4" --json
 assert_eq "crop exit code is 0" "$EC" "0"
@@ -298,7 +355,7 @@ assert_eq "crop output has 5 files" "$(json_len "$OUT" "output")" "5"
 grep -q "p2cxt_tile_1.png" "${OUT_DIR_CROP}/p2cxt_context.md" && ok "context references tile 1" || fail "context missing tile 1"
 grep -q "p2cxt_html.html" "${OUT_DIR_CROP}/p2cxt_context.md" && ok "context references p2cxt_html.html (crop)" || fail "context missing p2cxt_html.html reference (crop)"
 
-info "Test 5: resources-regex downloads css/js from HTML/network"
+info "Test 8: resources-regex downloads css/js from HTML/network"
 OUT_DIR_RES="${TMP_DIR}/run_resources"
 run_and_capture OUT EC "${SCRIPT[@]}" --url "${TEST_URL}" --output "${OUT_DIR_RES}" --resources-regex "\\.(css|js)(\\?|$)" --json
 assert_eq "resources exit code is 0" "$EC" "0"
@@ -314,7 +371,7 @@ assert_eq "resources include one js" "$RES_JS" "1"
 assert_eq "resources payload paths exist on disk" "$RES_MISSING" "0"
 grep -q "p2cxt_resource_" "${OUT_DIR_RES}/p2cxt_context.md" && ok "context references downloaded resources" || fail "context missing downloaded resources references"
 
-info "Test 6: console-log + run-js-file create log and execute script"
+info "Test 9: console-log + run-js-file create log and execute script"
 OUT_DIR_CONSOLE_JS="${TMP_DIR}/run_console_js"
 CUSTOM_JS="${TMP_DIR}/custom_script.js"
 cat > "${CUSTOM_JS}" <<'JS'
@@ -333,7 +390,7 @@ grep -q "p2cxt_console.log" "${OUT_DIR_CONSOLE_JS}/p2cxt_context.md" && ok "cont
 grep -q "custom js executed" "${OUT_DIR_CONSOLE_JS}/p2cxt_console.log" && ok "console log captured custom script output" || fail "console log missing custom script output"
 grep -q "data-p2cxt-js=\"done\"" "${OUT_DIR_CONSOLE_JS}/p2cxt_html.html" && ok "custom JS modified DOM" || fail "custom JS DOM effect missing"
 
-info "Test 7: existing output dir cleans only p2cxt_* files"
+info "Test 10: existing output dir cleans only p2cxt_* files"
 OUT_DIR_CLEAN="${TMP_DIR}/run_cleanup"
 mkdir -p "${OUT_DIR_CLEAN}"
 printf 'keep' > "${OUT_DIR_CLEAN}/keep.txt"
@@ -343,20 +400,20 @@ assert_eq "cleanup run exit code is 0" "$EC" "0"
 [[ -f "${OUT_DIR_CLEAN}/keep.txt" ]] && ok "non-prefixed file kept" || fail "non-prefixed file removed"
 [[ ! -e "${OUT_DIR_CLEAN}/p2cxt_old.tmp" ]] && ok "old prefixed file removed" || fail "old prefixed file not removed"
 
-info "Test 8: invalid --size returns exit_code=2 in json"
+info "Test 11: invalid --size returns exit_code=2 in json"
 run_and_capture OUT EC "${SCRIPT[@]}" --url "${TEST_URL}" --size "bad" --json
 assert_eq "invalid size process exit code is 2" "$EC" "2"
 assert_eq "invalid size status=error" "$(json_field "$OUT" "status")" "error"
 assert_eq "invalid size exit_code field=2" "$(json_field "$OUT" "exit_code")" "2"
 
-info "Test 9: out-of-range tile returns exit_code=2 and valid_range"
+info "Test 12: out-of-range tile returns exit_code=2 and valid_range"
 run_and_capture OUT EC "${SCRIPT[@]}" --url "${TEST_URL}" --crop "2x2:99" --json
 assert_eq "out-of-range process exit code is 2" "$EC" "2"
 assert_eq "out-of-range status=error" "$(json_field "$OUT" "status")" "error"
 assert_eq "out-of-range exit_code field=2" "$(json_field "$OUT" "exit_code")" "2"
 assert_eq "valid_range is present" "$(json_has_key "$OUT" "valid_range")" "True"
 
-info "Test 10: invalid --resources-regex returns exit_code=2 in json"
+info "Test 13: invalid --resources-regex returns exit_code=2 in json"
 run_and_capture OUT EC "${SCRIPT[@]}" --url "${TEST_URL}" --resources-regex "(" --json
 assert_eq "invalid regex process exit code is 2" "$EC" "2"
 assert_eq "invalid regex status=error" "$(json_field "$OUT" "status")" "error"

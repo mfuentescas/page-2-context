@@ -63,6 +63,7 @@ Running with no arguments prints full usage help.
 | Parameter | Required | Default | Description |
 |-----------|----------|---------|-------------|
 | `--url "<URL>"` | ✅ | — | URL to capture |
+| `--clean-temp` | ❌ | *(flag)* | Clean historical `p2cxt_*` artifacts tracked in cache |
 | `--size <WxH>` | ❌ | `1280x720` | Viewport size, e.g. `1920x1080` |
 | `--crop <spec>` | ❌ | *(none)* | Grid crop — see below |
 | `--console-log` | ❌ | *(flag)* | Capture browser console/page/navigation errors into `p2cxt_console.log` |
@@ -78,6 +79,12 @@ Running with no arguments prints full usage help.
 ```bash
 # Basic capture → prints absolute created artifact paths
 python page2context.py --url "http://localhost:4200/"
+
+# Clean only historical temporary artifacts (no --url needed)
+python page2context.py --clean-temp
+
+# Clean first, then capture normally
+python page2context.py --clean-temp --url "https://example.com"
 
 # Custom viewport
 python page2context.py --url "https://example.com" --size 1920x1080
@@ -128,6 +135,13 @@ Each tile becomes its own PNG file and its own numbered section in `p2cxt_contex
 ---
 
 ## Output
+
+`page2context` keeps a historical artifact list in:
+
+- `~/.cache/page2context/artifact_history.json` (by default)
+- Override for automation/tests: env var `P2CXT_STATE_DIR`
+
+This history is used by `--clean-temp` to remove previously generated `p2cxt_*` files.
 
 ### Without `--crop`
 
@@ -295,9 +309,25 @@ ERROR (3): Could not load URL: https://bad-url.invalid
 }
 ```
 
+### `--clean-temp` only (no `--url`)
+
+```json
+{
+  "status": "success",
+  "message": "Historical temporary artifacts cleaned.",
+  "version": "1.0.0",
+  "cleaned_files": 3,
+  "cleaned": ["/abs/path/.../p2cxt_context.md"],
+  "failed": [],
+  "output": [],
+  "files": []
+}
+```
+
 > `resources` is only present when `--resources-regex` is used.
 > `console_log` is only present when `--console-log` is used.
 > `script` is only present when `--run-js-file` is used.
+> `cleanup_before_run` is present when `--clean-temp` is combined with capture options.
 > `output`/`files` always contain absolute artifact paths.
 
 ### Exit codes

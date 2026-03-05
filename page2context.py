@@ -7,6 +7,7 @@ Exit codes follow UNIX conventions.
 import argparse
 import json
 import math
+import os
 import pathlib
 import re
 import sys
@@ -37,11 +38,20 @@ EXIT_DEP_ERR        = 5
 EXIT_UNEXPECTED     = 99
 
 OUTPUT_PREFIX = "p2cxt_"
+STATE_DIR_ENV = "P2CXT_STATE_DIR"
+STATE_FILE_NAME = "artifact_history.json"
+
+
+def _history_file_full_path() -> str:
+    # resolve() is used so output is always an absolute path even if file doesn't exist yet.
+    return str(_state_file().resolve())
 # ---------------------------------------------------------------------------
 # Output helpers
 # ---------------------------------------------------------------------------
 _json_mode: bool = False
 def _emit(payload: dict) -> None:
+    if "history_file" not in payload:
+        payload = {**payload, "history_file": _history_file_full_path()}
     if _json_mode:
         print(json.dumps(payload, ensure_ascii=False, indent=2), flush=True)
     else:
@@ -56,6 +66,9 @@ def _emit_text(payload: dict) -> None:
         else:
             # Backward-compatible fallback
             print(payload.get("output_dir", ""))
+        history_file = payload.get("history_file")
+        if history_file:
+            print(f"history_file: {history_file}")
     elif status == "error":
         code = payload.get("exit_code", "")
         print(f"ERROR ({code}): {msg}", file=sys.stderr)
@@ -67,8 +80,14 @@ def _emit_text(payload: dict) -> None:
             print(f"  valid tile range: {r[0]}-{r[1]}", file=sys.stderr)
         if "detail" in payload:
             print(f"  detail: {payload['detail']}", file=sys.stderr)
+        history_file = payload.get("history_file")
+        if history_file:
+            print(f"  history_file: {history_file}", file=sys.stderr)
     elif status == "info":
         print(payload.get("syntax", ""))
+        history_file = payload.get("history_file")
+        if history_file:
+            print(f"history_file: {history_file}")
 def _success(message: str, **extra) -> None:
     _emit({"status": "success", "message": message, **extra})
 def _error_exit(code: int, message: str, **extra) -> NoReturn:
@@ -84,7 +103,10 @@ SYNTAX_HELP = textwrap.dedent("""\
       python page2context.py --url "<URL>" [OPTIONS]
     Required:
       --url  "<URL>"              URL to capture, e.g. "http://localhost:4200/"
+                                  (required unless using only --clean-temp)
     Optional:
+      --clean-temp               Clean historical p2cxt temporary artifacts
+                                  recorded in the local history store.
       --size  <WIDTHxHEIGHT>     Viewport size          (default: 1280x720)
       --crop  <COLSxROWS:TILES>  Grid crop, e.g. "3x9:1,27"
                                    Divides the full-page screenshot into a
@@ -101,6 +123,7 @@ SYNTAX_HELP = textwrap.dedent("""\
        --json                     Machine-readable JSON output (for AI callers)
     Examples:
       python page2context.py --url "https://example.com"
+      python page2context.py --clean-temp
       python page2context.py --url "https://example.com" --size 1920x1080
       python page2context.py --url "https://example.com" --crop "3x9:1,27"
       python page2context.py --url "https://example.com" --console-log
@@ -127,7 +150,7 @@ class _TextArgumentParser(argparse.ArgumentParser):
 def parse_args():
     global _json_mode
     if len(sys.argv) == 1:
-        print(SYNTAX_HELP)
+        _emit({"status": "info", "syntax": SYNTAX_HELP})
         sys.exit(EXIT_BAD_ARGS)
     # Pre-detect --json before argparse validates required args
     _json_mode = "--json" in sys.argv
@@ -136,7 +159,12 @@ def parse_args():
         description="Capture a webpage screenshot and DOM HTML into Markdown outputs.",
         add_help=True,
     )
-    parser.add_argument("--url",    required=True,          help="URL to capture")
+    parser.add_argument("--url",    required=False,         help="URL to capture")
+    parser.add_argument(
+        "--clean-temp",
+        action="store_true",
+        help="Clean historical p2cxt temporary artifacts before exiting or before capture.",
+    )
     parser.add_argument("--size",   default="1280x720",     help="Viewport WIDTHxHEIGHT")
     parser.add_argument("--crop",   default=None,           help="Grid crop COLSxROWS:TILE[,TILE]")
     parser.add_argument(
@@ -157,6 +185,12 @@ def parse_args():
     parser.add_argument("--output", default="page2context", help="Output folder (default: page2context)")
     parser.add_argument("--json",   action="store_true",    help="Emit JSON output (for AI callers)")
     args = parser.parse_args()
+    if not args.clean_temp and not args.url:
+        _error_exit(
+            EXIT_BAD_ARGS,
+            "Argument error: --url is required unless using only --clean-temp.",
+            hint="Use --clean-temp alone to clean cache, or provide --url for capture.",
+        )
     _json_mode = args.json
     return args
 # ---------------------------------------------------------------------------
@@ -365,10 +399,97 @@ def _download_resources(
 
     return downloaded, failures
 # ---------------------------------------------------------------------------
+# State management
+# ---------------------------------------------------------------------------
+def _state_dir() -> pathlib.Path:
+    custom = os.environ.get(STATE_DIR_ENV)
+    if custom:
+        return pathlib.Path(custom).expanduser()
+    return pathlib.Path.home() / ".cache" / "page2context"
+
+
+def _state_file() -> pathlib.Path:
+    return _state_dir() / STATE_FILE_NAME
+
+
+def _load_artifact_history() -> list[str]:
+    state_file = _state_file()
+    if not state_file.exists():
+        return []
+    try:
+        raw = json.loads(state_file.read_text(encoding="utf-8"))
+        if isinstance(raw, list):
+            return [p for p in raw if isinstance(p, str)]
+        return []
+    except (OSError, json.JSONDecodeError):
+        return []
+
+
+def _save_artifact_history(paths: list[str]) -> None:
+    state_dir = _state_dir()
+    state_file = _state_file()
+    try:
+        state_dir.mkdir(parents=True, exist_ok=True)
+        state_file.write_text(json.dumps(paths, ensure_ascii=False, indent=2), encoding="utf-8")
+    except OSError as exc:
+        _error_exit(EXIT_IO_ERR, f"Cannot write artifact history: {exc}", path=str(state_file))
+
+
+def _record_artifacts(paths: list[str]) -> None:
+    existing = _load_artifact_history()
+    merged = existing + paths
+    # Keep stable order while removing duplicates.
+    deduped = list(dict.fromkeys(merged))
+    # Prune stale entries that no longer exist.
+    alive = [p for p in deduped if pathlib.Path(p).exists()]
+    _save_artifact_history(alive)
+
+
+def _clean_historical_artifacts() -> dict:
+    history = _load_artifact_history()
+    cleaned: list[str] = []
+    failed: list[str] = []
+    kept: list[str] = []
+
+    for entry in history:
+        path = pathlib.Path(entry)
+        if not path.exists():
+            continue
+        if not path.is_file() or not path.name.startswith(OUTPUT_PREFIX):
+            kept.append(str(path))
+            continue
+        try:
+            path.unlink()
+            cleaned.append(str(path))
+        except OSError as exc:
+            failed.append(f"{path} :: {exc}")
+            kept.append(str(path))
+
+    _save_artifact_history(kept)
+    return {
+        "cleaned": cleaned,
+        "failed": failed,
+        "cleaned_files": len(cleaned),
+    }
+# ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 def main():
     args = parse_args()
+
+    clean_result = None
+    if args.clean_temp:
+        clean_result = _clean_historical_artifacts()
+        if not args.url:
+            _success(
+                "Historical temporary artifacts cleaned.",
+                version=__version__,
+                **clean_result,
+                output=[],
+                files=[],
+            )
+            return
+
     try:
         viewport_w, viewport_h = parse_size(args.size)
     except _CliArgError as exc:
@@ -554,6 +675,9 @@ def main():
         "screenshot": str(full_screenshot),
     }
 
+    if clean_result is not None:
+        result["cleanup_before_run"] = clean_result
+
     if args.console_log:
         result["console_log"] = str(console_log_path)
 
@@ -574,6 +698,8 @@ def main():
     absolute_files = [str(path.resolve()) for path in created_files]
     result["output"] = absolute_files
     result["files"] = absolute_files
+
+    _record_artifacts(absolute_files)
 
     if crop_parsed:
         cols, rows, tiles = crop_parsed

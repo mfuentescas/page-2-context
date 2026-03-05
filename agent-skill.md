@@ -34,6 +34,7 @@ python page2context.py --url "<URL>" --json
 ### Full call
 ```bash
 python page2context.py \
+  --clean-temp \
   --url    "<URL>" \
   --size   "<WIDTHxHEIGHT>" \
   --crop   "<COLSxROWS:TILE[,TILE]>" \
@@ -51,6 +52,7 @@ python page2context.py \
 | `--url` | ✅ | — | URL to capture (always quote it) |
 | `--size` | ❌ | `1280x720` | Viewport size, e.g. `1920x1080` or `375x812` |
 | `--crop` | ❌ | *(none)* | Grid crop spec — see below |
+| `--clean-temp` | ❌ | *(flag)* | Clean historical `p2cxt_*` artifacts from tracked cache |
 | `--console-log` | ❌ | *(flag)* | Save console/page/navigation errors into `p2cxt_console.log` |
 | `--run-js-file` | ❌ | *(none)* | Execute JS file in browser page and wait until it finishes |
 | `--resources-regex` | ❌ | *(none)* | Download resources whose URL matches regex from HTML refs + observed traffic |
@@ -107,6 +109,11 @@ p2cxt_context.md:
   "context":    "page2context/p2cxt_context.md",
   "html":       "page2context/p2cxt_html.html",
   "screenshot": "page2context/p2cxt_screenshot.png",
+  "cleanup_before_run": {
+    "cleaned": ["/abs/path/old/p2cxt_context.md"],
+    "failed": [],
+    "cleaned_files": 1
+  },
   "console_log": "page2context/p2cxt_console.log",
   "script": {
     "file": "script.js",
@@ -143,6 +150,22 @@ p2cxt_context.md:
 > `output`/`files` are always present and contain absolute artifact paths.
 > `console_log` is only present when `--console-log` is used.
 > `script` is only present when `--run-js-file` is used.
+> `cleanup_before_run` is only present when `--clean-temp` is combined with capture.
+
+### Clean-only success (`--clean-temp` without `--url`)
+
+```json
+{
+  "status": "success",
+  "message": "Historical temporary artifacts cleaned.",
+  "version": "1.0.0",
+  "cleaned_files": 3,
+  "cleaned": ["/abs/path/.../p2cxt_context.md"],
+  "failed": [],
+  "output": [],
+  "files": []
+}
+```
 
 ### On error
 
@@ -176,11 +199,12 @@ p2cxt_context.md:
 2. Check status == "success", else report reason to user and stop
 3. Read <output_dir>/p2cxt_context.md — contains screenshots + structure
 4. Read <output_dir>/p2cxt_html.html — contains full DOM HTML
-5. If enabled, read <output_dir>/p2cxt_console.log for console/navigation/browser errors
-6. If provided, use `resources.files` artifacts (`p2cxt_resource_*`) for CSS/JS inspection
-7. If provided, inspect `script.result` from executed JS
-8. Use all files to answer the user's question
-9. Be aware the tool cleans previous `p2cxt_*` files in an existing output dir
+5. If clean-only mode was requested, report cleaned_files/failed and stop
+6. If enabled, read <output_dir>/p2cxt_console.log for console/navigation/browser errors
+7. If provided, use `resources.files` artifacts (`p2cxt_resource_*`) for CSS/JS inspection
+8. If provided, inspect `script.result` from executed JS
+9. Use all files to answer the user's question
+10. Be aware the tool cleans previous `p2cxt_*` files in an existing output dir
 ```
 
 ---

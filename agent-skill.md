@@ -1,6 +1,6 @@
 # Skill: page2context
 
-> Capture any webpage (screenshot + live DOM HTML) into a Markdown file
+> Capture any webpage (screenshot + live DOM HTML) into `p2cxt_*` artifacts
 > so an AI assistant can visually understand a page's layout, CSS and structure.
 
 ---
@@ -103,22 +103,33 @@ p2cxt_context.md:
   "context":    "page2context/p2cxt_context.md",
   "html":       "page2context/p2cxt_html.html",
   "screenshot": "page2context/p2cxt_screenshot.png",
+  "output": [
+    "/abs/path/page2context/p2cxt_screenshot.png",
+    "/abs/path/page2context/p2cxt_context.md",
+    "/abs/path/page2context/p2cxt_html.html"
+  ],
+  "files": [
+    "/abs/path/page2context/p2cxt_screenshot.png",
+    "/abs/path/page2context/p2cxt_context.md",
+    "/abs/path/page2context/p2cxt_html.html"
+  ],
   "resources": {
     "regex": "\\.(css|js)(\\?|$)",
     "matched_urls": ["https://example.com/styles.css", "https://example.com/app.js"],
-    "files": ["page2context/p2cxt_resource_001.css", "page2context/p2cxt_resource_002.js"],
+    "files": ["/abs/path/page2context/p2cxt_resource_001.css", "/abs/path/page2context/p2cxt_resource_002.js"],
     "failed": []
   },
   "crop": {
     "grid":  "3x9",
     "tiles": [1, 27],
-    "files": ["page2context/p2cxt_tile_1.png", "page2context/p2cxt_tile_27.png"]
+    "files": ["/abs/path/page2context/p2cxt_tile_1.png", "/abs/path/page2context/p2cxt_tile_27.png"]
   }
 }
 ```
 
 > `crop` is only present when `--crop` was used.
 > `resources` is only present when `--resources-regex` was used.
+> `output`/`files` are always present and contain absolute artifact paths.
 
 ### On error
 
@@ -154,6 +165,7 @@ p2cxt_context.md:
 4. Read <output_dir>/p2cxt_html.html — contains full DOM HTML
 5. If provided, use `resources.files` artifacts (`p2cxt_resource_*`) for CSS/JS inspection
 6. Use all files to answer the user's question
+7. Be aware the tool cleans previous `p2cxt_*` files in an existing output dir
 ```
 
 ---

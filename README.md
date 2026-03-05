@@ -74,7 +74,7 @@ Running with no arguments prints full usage help.
 ### Examples
 
 ```bash
-# Basic capture → prints: page2context
+# Basic capture → prints absolute created artifact paths
 python page2context.py --url "http://localhost:4200/"
 
 # Custom viewport
@@ -195,10 +195,12 @@ Regex: `\.(css|js)(\?|$)`
 
 ## Output modes
 
-### Default — prints the output folder path
+### Default — prints created file paths (absolute)
 
 ```
-page2context
+/abs/path/page2context/p2cxt_screenshot.png
+/abs/path/page2context/p2cxt_context.md
+/abs/path/page2context/p2cxt_html.html
 ```
 
 Errors go to **stderr**:
@@ -212,6 +214,7 @@ ERROR (3): Could not load URL: https://bad-url.invalid
 ```json
 {
   "status":     "success",
+  "message":    "Page captured successfully.",
   "version":    "1.0.0",
   "url":        "https://example.com",
   "viewport":   "1280x720",
@@ -219,6 +222,16 @@ ERROR (3): Could not load URL: https://bad-url.invalid
   "context":    "page2context/p2cxt_context.md",
   "html":       "page2context/p2cxt_html.html",
   "screenshot": "page2context/p2cxt_screenshot.png",
+  "output": [
+    "/abs/path/page2context/p2cxt_screenshot.png",
+    "/abs/path/page2context/p2cxt_context.md",
+    "/abs/path/page2context/p2cxt_html.html"
+  ],
+  "files": [
+    "/abs/path/page2context/p2cxt_screenshot.png",
+    "/abs/path/page2context/p2cxt_context.md",
+    "/abs/path/page2context/p2cxt_html.html"
+  ],
   "resources": {
     "regex": "\\.(css|js)(\\?|$)",
     "matched_urls": [
@@ -226,20 +239,21 @@ ERROR (3): Could not load URL: https://bad-url.invalid
       "https://example.com/app.js"
     ],
     "files": [
-      "page2context/p2cxt_resource_001.css",
-      "page2context/p2cxt_resource_002.js"
+      "/abs/path/page2context/p2cxt_resource_001.css",
+      "/abs/path/page2context/p2cxt_resource_002.js"
     ],
     "failed": []
   },
   "crop": {
     "grid":  "3x9",
     "tiles": [1, 27],
-    "files": ["page2context/p2cxt_tile_1.png", "page2context/p2cxt_tile_27.png"]
+    "files": ["/abs/path/page2context/p2cxt_tile_1.png", "/abs/path/page2context/p2cxt_tile_27.png"]
   }
 }
 ```
 
 > `resources` is only present when `--resources-regex` is used.
+> `output`/`files` always contain absolute artifact paths.
 
 ### Exit codes
 

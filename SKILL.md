@@ -1,6 +1,6 @@
 ---
 name: page-2-context
-description: Capture any webpage (screenshot + live DOM HTML) into a Markdown file so you can visually understand a page's layout, CSS and structure. Use this when the user asks you to inspect, analyse or replicate any web page — especially localhost dev servers.
+description: Capture any webpage (screenshot + live DOM HTML) into `p2cxt_*` artifacts so you can visually understand a page's layout, CSS and structure. Use this when the user asks you to inspect, analyse or replicate any web page — especially localhost dev servers.
 ---
 
 # page2context
@@ -52,6 +52,7 @@ left-to-right, top-to-bottom from 1. Each tile is saved as a separate PNG.
 ```json
 {
   "status":     "success",
+  "message":    "Page captured successfully.",
   "version":    "1.0.0",
   "url":        "https://example.com",
   "viewport":   "1280x720",
@@ -59,16 +60,26 @@ left-to-right, top-to-bottom from 1. Each tile is saved as a separate PNG.
   "context":    "page2context/p2cxt_context.md",
   "html":       "page2context/p2cxt_html.html",
   "screenshot": "page2context/p2cxt_screenshot.png",
+  "output": [
+    "/abs/path/page2context/p2cxt_screenshot.png",
+    "/abs/path/page2context/p2cxt_context.md",
+    "/abs/path/page2context/p2cxt_html.html"
+  ],
+  "files": [
+    "/abs/path/page2context/p2cxt_screenshot.png",
+    "/abs/path/page2context/p2cxt_context.md",
+    "/abs/path/page2context/p2cxt_html.html"
+  ],
   "resources": {
     "regex": "\\.(css|js)(\\?|$)",
     "matched_urls": ["https://example.com/styles.css", "https://example.com/app.js"],
-    "files": ["page2context/p2cxt_resource_001.css", "page2context/p2cxt_resource_002.js"],
+    "files": ["/abs/path/page2context/p2cxt_resource_001.css", "/abs/path/page2context/p2cxt_resource_002.js"],
     "failed": []
   },
   "crop": {
     "grid":  "3x9",
     "tiles": [1, 27],
-    "files": ["page2context/p2cxt_tile_1.png", "page2context/p2cxt_tile_27.png"]
+    "files": ["/abs/path/page2context/p2cxt_tile_1.png", "/abs/path/page2context/p2cxt_tile_27.png"]
   }
 }
 ```
@@ -76,6 +87,7 @@ left-to-right, top-to-bottom from 1. Each tile is saved as a separate PNG.
 > `crop` is only present when `--crop` was used.
 > Without crop, `p2cxt_screenshot.png` is the full-page image.
 > `resources` is only present when `--resources-regex` is used.
+> `output`/`files` always contain absolute paths to created artifacts.
 
 ## Output on error
 
@@ -108,6 +120,7 @@ left-to-right, top-to-bottom from 1. Each tile is saved as a separate PNG.
 4. Read <output_dir>/p2cxt_html.html for full DOM HTML
 5. If regex used, inspect `resources.files` and downloaded `p2cxt_resource_*` artifacts
 6. Use all artifacts to answer layout / CSS / structure questions
+7. Remember: existing `p2cxt_*` files are cleaned at run start in an existing output dir
 ```
 
 ## Installation

@@ -364,8 +364,15 @@ ERROR (3): Could not load URL: https://bad-url.invalid
   "screenshot": "page2context/p2cxt_screenshot.png",
   "chrome_profile_source": "/home/user/.config/google-chrome",
   "console_log": "page2context/p2cxt_console.log",
+  "browser_profile": {
+    "browser":   "chrome",
+    "source":    "/home/user/.config/google-chrome",
+    "temp_copy": "/tmp/p2cxt_chrome_copy_xxx/profile",
+    "used": true,
+    "cleaned": true
+  },
   "chrome_profile": {
-    "source": "/home/user/.config/google-chrome",
+    "source":    "/home/user/.config/google-chrome",
     "temp_copy": "/tmp/p2cxt_chrome_copy_xxx/profile",
     "used": true,
     "cleaned": true
@@ -423,8 +430,9 @@ ERROR (3): Could not load URL: https://bad-url.invalid
 }
 ```
 
-> `chrome_profile_source` is always present. It is empty when no Chrome profile was used.
-> `chrome_profile` is only present when `--chrome-profile-dir` is used and copy setup succeeded.
+> `chrome_profile_source` is always present. Populated only for `--chrome-profile-dir`; `""` otherwise.
+> `browser_profile` is present when any `--*-profile-dir` flag is used. Its `browser` field names the browser. For `--chrome-profile-dir` both `browser_profile` and `chrome_profile` are present (the latter for backward compatibility).
+> `chrome_profile` is only present when `--chrome-profile-dir` is used (backward compat).
 > `resources` is only present when `--resources-regex` is used.
 > `console_log` is only present when `--console-log` is used.
 > `script` is only present when `--run-js-file` is used.

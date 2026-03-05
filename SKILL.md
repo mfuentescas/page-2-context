@@ -58,17 +58,55 @@ left-to-right, top-to-bottom from 1. Each tile is saved as a separate PNG.
 ```
 --crop "3x9:1,27"   → tile 1 (top-left) + tile 27 (bottom-right)
 --crop "2x4:1,2,3"  → first three tiles of a 2×4 grid
---resources-regex "\\.(css|js)(\\?|$)" → download CSS/JS resources found in source/network
---clean-temp → clean historical `p2cxt_*` files tracked in cache, then exit (or continue if --url is present)
---console-log → write console and browser/page/navigation errors to p2cxt_console.log
---chrome-profile-dir "~/.config/google-chrome" → run with a temporary copied Chrome profile, cleaned at script end
---chrome-profile-dir "" → auto-detect first default Chrome profile; errors if not found
---firefox-profile-dir "" → auto-detect first default Firefox profile; errors if not found
---edge-profile-dir "" → auto-detect first default Edge profile; errors if not found
---brave-profile-dir "" → auto-detect first default Brave profile; errors if not found
---run-js-file "./script.js" → execute script in browser and wait until it finishes
---post-load-wait-ms 1200 → wait after load before running JS/screenshot (useful for animations)
---run-js-file "./test/example_log_cookies.js" --console-log → log accessible browser cookies into p2cxt_console.log
+```
+
+### Quick-reference examples
+
+```bash
+# Download CSS/JS resources seen in source/network
+python page2context.py --url "<URL>" --resources-regex "\\.(css|js)(\\?|$)" --json
+
+# Clean historical p2cxt_* artifacts and exit
+python page2context.py --clean-temp --json
+
+# Clean first, then capture
+python page2context.py --clean-temp --url "<URL>" --json
+
+# Capture browser console and page errors
+python page2context.py --url "<URL>" --console-log --json
+
+# Run with a temporary copy of a Chrome profile (logged-in session)
+python page2context.py --url "<URL>" --chrome-profile-dir "~/.config/google-chrome" --json
+
+# Auto-detect Chrome profile (errors if none found)
+python page2context.py --url "<URL>" --chrome-profile-dir "" --json
+
+# Auto-detect Firefox profile
+python page2context.py --url "<URL>" --firefox-profile-dir "" --json
+
+# Auto-detect Edge profile
+python page2context.py --url "<URL>" --edge-profile-dir "" --json
+
+# Auto-detect Brave profile
+python page2context.py --url "<URL>" --brave-profile-dir "" --json
+
+# Auto-detect Safari profile (macOS only)
+python page2context.py --url "<URL>" --safari-profile-dir "" --json
+
+# Auto-detect Chromium profile
+python page2context.py --url "<URL>" --chromium-profile-dir "" --json
+
+# Auto-detect WebKit profile
+python page2context.py --url "<URL>" --webkit-profile-dir "" --json
+
+# Execute a JS file in the page and wait until it finishes
+python page2context.py --url "<URL>" --run-js-file "./script.js" --json
+
+# Wait 1200ms after load before running JS/screenshot (useful for animations)
+python page2context.py --url "<URL>" --post-load-wait-ms 1200 --run-js-file "./script.js" --json
+
+# Log accessible browser cookies via JS into p2cxt_console.log
+python page2context.py --url "<URL>" --console-log --run-js-file "./test/example_log_cookies.js" --json
 ```
 
 History cache location:

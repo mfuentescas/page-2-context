@@ -47,9 +47,34 @@ python page2context.py \
   --json
 ```
 
-> Alternatively use `--firefox-profile-dir`, `--edge-profile-dir`, `--brave-profile-dir`,
-> `--safari-profile-dir`, `--chromium-profile-dir`, or `--webkit-profile-dir` instead of
-> `--chrome-profile-dir`. Only **one** browser profile flag can be used per run.
+> Use exactly **one** of the following instead of `--chrome-profile-dir`, depending on the user's browser.
+> Only one browser profile flag can be used per run — passing two returns exit code 2.
+
+```bash
+# Chrome (default — uses Chromium engine)
+python page2context.py --url "<URL>" --chrome-profile-dir "" --json
+
+# Microsoft Edge
+python page2context.py --url "<URL>" --edge-profile-dir "" --json
+
+# Brave
+python page2context.py --url "<URL>" --brave-profile-dir "" --json
+
+# Firefox
+python page2context.py --url "<URL>" --firefox-profile-dir "" --json
+
+# Safari (macOS only)
+python page2context.py --url "<URL>" --safari-profile-dir "" --json
+
+# Chromium (open-source build)
+python page2context.py --url "<URL>" --chromium-profile-dir "" --json
+
+# Playwright WebKit
+python page2context.py --url "<URL>" --webkit-profile-dir "" --json
+```
+
+> Pass `""` to auto-detect the profile, or pass the explicit directory path.
+> All flags copy the profile to a temp folder and delete it after the run — **original profile is never modified.**
 
 ### Parameters
 

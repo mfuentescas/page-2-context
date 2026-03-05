@@ -41,6 +41,7 @@ python page2context.py \
   --console-log \
   --chrome-profile-dir "<DIR>" \
   --run-js-file "<PATH>" \
+  --post-load-wait-ms "<MS>" \
   --resources-regex "<REGEX>" \
   --output "<folder-name>" \
   --json
@@ -57,6 +58,7 @@ python page2context.py \
 | `--console-log` | ❌ | *(flag)* | Save console/page/navigation errors into `p2cxt_console.log` |
 | `--chrome-profile-dir` | ❌ | *(none)* | Copy Chrome user-data dir to ephemeral run profile and delete copy at end. Pass empty (`""`) to auto-detect first default profile. |
 | `--run-js-file` | ❌ | *(none)* | Execute JS file in browser page and wait until it finishes |
+| `--post-load-wait-ms` | ❌ | `0` | Extra wait in milliseconds after page load and before `--run-js-file`/screenshot |
 | `--resources-regex` | ❌ | *(none)* | Download resources whose URL matches regex from HTML refs + observed traffic |
 | `--output` | ❌ | `page2context` | Output folder |
 | `--json` | ✅ for AI | *(flag)* | Always use when calling programmatically |
@@ -107,6 +109,7 @@ p2cxt_context.md:
   "version":    "1.0.0",
   "url":        "https://example.com",
   "viewport":   "1280x720",
+  "post_load_wait_ms": 1200,
   "output_dir": "page2context",
   "context":    "page2context/p2cxt_context.md",
   "html":       "page2context/p2cxt_html.html",
@@ -237,3 +240,11 @@ Or with make:
 ```bash
 make setup
 ```
+
+Use `test/example_log_cookies.js` as a ready-to-run sample for `--run-js-file`:
+
+```bash
+python page2context.py --url "<URL>" --console-log --run-js-file "./test/example_log_cookies.js" --json
+```
+
+When your JS file uses `return ...`, the value appears in `script.result`.

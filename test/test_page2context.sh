@@ -440,7 +440,45 @@ grep -q "p2cxt_console.log" "${OUT_DIR_CONSOLE_JS}/p2cxt_context.md" && ok "cont
 grep -q "custom js executed" "${OUT_DIR_CONSOLE_JS}/p2cxt_console.log" && ok "console log captured custom script output" || fail "console log missing custom script output"
 grep -q "data-p2cxt-js=\"done\"" "${OUT_DIR_CONSOLE_JS}/p2cxt_html.html" && ok "custom JS modified DOM" || fail "custom JS DOM effect missing"
 
-info "Test 10: chrome-profile-dir uses ephemeral copy and cleans it"
+info "Test 10: example_log_cookies.js logs cookie summary"
+OUT_DIR_COOKIE_EXAMPLE="${TMP_DIR}/run_cookie_example"
+EXAMPLE_COOKIE_JS="${ROOT_DIR}/test/example_log_cookies.js"
+run_and_capture OUT EC "${SCRIPT[@]}" --url "${TEST_URL}" --output "${OUT_DIR_COOKIE_EXAMPLE}" --console-log --run-js-file "${EXAMPLE_COOKIE_JS}" --json
+assert_eq "example cookie js exit code is 0" "$EC" "0"
+assert_eq "example cookie js status=success" "$(json_field "$OUT" "status")" "success"
+assert_eq "example cookie js script key present" "$(json_has_key "$OUT" "script")" "True"
+[[ -f "${OUT_DIR_COOKIE_EXAMPLE}/p2cxt_console.log" ]] && ok "example cookie js created console log" || fail "example cookie js missing console log"
+grep -Eq "\[cookies\] (No accessible cookies found for this page\.|Total accessible cookies:)" "${OUT_DIR_COOKIE_EXAMPLE}/p2cxt_console.log" \
+  && ok "example cookie js wrote cookie summary to console log" \
+  || fail "example cookie js missing cookie summary in console log"
+
+auto_wait_js="${TMP_DIR}/wait_probe.js"
+cat > "${auto_wait_js}" <<'JS'
+const elapsed = Math.floor(performance.now());
+console.log(`[wait-probe] elapsed=${elapsed}`);
+return elapsed;
+JS
+
+info "Test 11: --post-load-wait-ms delays execution before --run-js-file"
+OUT_DIR_WAIT="${TMP_DIR}/run_wait"
+run_and_capture OUT EC "${SCRIPT[@]}" --url "${TEST_URL}" --output "${OUT_DIR_WAIT}" --run-js-file "${auto_wait_js}" --post-load-wait-ms 400 --json
+assert_eq "post-load wait exit code is 0" "$EC" "0"
+assert_eq "post-load wait status=success" "$(json_field "$OUT" "status")" "success"
+assert_eq "post-load wait ms echoed in json" "$(json_field "$OUT" "post_load_wait_ms")" "400"
+ELAPSED_MS="$(json_nested_field "$OUT" "script" "result")"
+if [[ "$ELAPSED_MS" =~ ^[0-9]+$ ]] && (( ELAPSED_MS >= 300 )); then
+  ok "post-load wait affected script execution timing"
+else
+  fail "post-load wait did not delay enough (script result: $ELAPSED_MS)"
+fi
+
+info "Test 12: invalid --post-load-wait-ms returns exit_code=2"
+run_and_capture OUT EC "${SCRIPT[@]}" --url "${TEST_URL}" --post-load-wait-ms "-1" --json
+assert_eq "invalid post-load-wait process exit code is 2" "$EC" "2"
+assert_eq "invalid post-load-wait status=error" "$(json_field "$OUT" "status")" "error"
+assert_eq "invalid post-load-wait exit_code field=2" "$(json_field "$OUT" "exit_code")" "2"
+
+info "Test 13: chrome-profile-dir uses ephemeral copy and cleans it"
 OUT_DIR_CHROME_TMP="${TMP_DIR}/run_chrome_tmp"
 CHROME_TMP_SRC="${TMP_DIR}/chrome_temp_source"
 mkdir -p "${CHROME_TMP_SRC}/Default"
@@ -460,7 +498,7 @@ TEMP_COPY_PATH="$(json_nested_field "$OUT" "chrome_profile" "temp_copy")"
 [[ ! -e "$TEMP_COPY_PATH" ]] && ok "chrome temp copy removed after run" || fail "chrome temp copy still exists after run"
 grep -q "Chrome Profile Copy" "${OUT_DIR_CHROME_TMP}/p2cxt_context.md" && ok "context includes chrome profile copy section" || fail "context missing chrome profile copy section"
 
-info "Test 11: chrome-profile-dir empty auto-discovers first default profile"
+info "Test 14: chrome-profile-dir empty auto-discovers first default profile"
 OUT_DIR_CHROME_AUTO="${TMP_DIR}/run_chrome_auto"
 AUTO_HOME="${TMP_DIR}/home_auto"
 AUTO_PROFILE="${AUTO_HOME}/.config/google-chrome"
@@ -480,7 +518,7 @@ if [[ "$STATUS_AUTO" == "success" ]]; then
   assert_eq "chrome_profile source matches auto-discovered profile" "$(json_nested_field "$OUT" "chrome_profile" "source")" "${AUTO_PROFILE_ABS}"
 fi
 
-info "Test 12: chrome-profile-dir empty returns exit_code=4 when no profile is found"
+info "Test 15: chrome-profile-dir empty returns exit_code=4 when no profile is found"
 MISSING_HOME="${TMP_DIR}/home_missing"
 mkdir -p "${MISSING_HOME}"
 run_and_capture OUT EC env HOME="${MISSING_HOME}" "${SCRIPT[@]}" --url "${TEST_URL}" --output "${TMP_DIR}/run_chrome_missing" --chrome-profile-dir "" --json
@@ -490,7 +528,7 @@ assert_eq "chrome-profile-dir missing auto-discovery chrome_profile_source key p
 assert_eq "chrome-profile-dir missing auto-discovery chrome_profile_source is empty" "$(json_field "$OUT" "chrome_profile_source")" ""
 assert_eq "chrome-profile-dir missing auto-discovery exit_code field=4" "$(json_field "$OUT" "exit_code")" "4"
 
-info "Test 13: existing output dir cleans only p2cxt_* files"
+info "Test 16: existing output dir cleans only p2cxt_* files"
 OUT_DIR_CLEAN="${TMP_DIR}/run_cleanup"
 mkdir -p "${OUT_DIR_CLEAN}"
 printf 'keep' > "${OUT_DIR_CLEAN}/keep.txt"
@@ -500,20 +538,20 @@ assert_eq "cleanup run exit code is 0" "$EC" "0"
 [[ -f "${OUT_DIR_CLEAN}/keep.txt" ]] && ok "non-prefixed file kept" || fail "non-prefixed file removed"
 [[ ! -e "${OUT_DIR_CLEAN}/p2cxt_old.tmp" ]] && ok "old prefixed file removed" || fail "old prefixed file not removed"
 
-info "Test 14: invalid --size returns exit_code=2 in json"
+info "Test 17: invalid --size returns exit_code=2 in json"
 run_and_capture OUT EC "${SCRIPT[@]}" --url "${TEST_URL}" --size "bad" --json
 assert_eq "invalid size process exit code is 2" "$EC" "2"
 assert_eq "invalid size status=error" "$(json_field "$OUT" "status")" "error"
 assert_eq "invalid size exit_code field=2" "$(json_field "$OUT" "exit_code")" "2"
 
-info "Test 15: out-of-range tile returns exit_code=2 and valid_range"
+info "Test 18: out-of-range tile returns exit_code=2 and valid_range"
 run_and_capture OUT EC "${SCRIPT[@]}" --url "${TEST_URL}" --crop "2x2:99" --json
 assert_eq "out-of-range process exit code is 2" "$EC" "2"
 assert_eq "out-of-range status=error" "$(json_field "$OUT" "status")" "error"
 assert_eq "out-of-range exit_code field=2" "$(json_field "$OUT" "exit_code")" "2"
 assert_eq "valid_range is present" "$(json_has_key "$OUT" "valid_range")" "True"
 
-info "Test 16: invalid --resources-regex returns exit_code=2 in json"
+info "Test 19: invalid --resources-regex returns exit_code=2 in json"
 run_and_capture OUT EC "${SCRIPT[@]}" --url "${TEST_URL}" --resources-regex "(" --json
 assert_eq "invalid regex process exit code is 2" "$EC" "2"
 assert_eq "invalid regex status=error" "$(json_field "$OUT" "status")" "error"

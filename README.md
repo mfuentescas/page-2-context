@@ -69,6 +69,7 @@ Running with no arguments prints full usage help.
 | `--console-log` | ❌ | *(flag)* | Capture browser console/page/navigation errors into `p2cxt_console.log` |
 | `--chrome-profile-dir [dir]` | ❌ | *(none)* | Chrome user profile dir to copy into an ephemeral run profile; pass empty (`""`) to auto-detect first default profile for your OS |
 | `--run-js-file <path>` | ❌ | *(none)* | Execute a JS file inside the opened page and wait for completion |
+| `--post-load-wait-ms <ms>` | ❌ | `0` | Extra wait after page load and before `--run-js-file`/screenshot (useful for animations) |
 | `--resources-regex <regex>` | ❌ | *(none)* | Download matching resources seen in HTML or browser traffic |
 | `--output <dir>` | ❌ | `page2context` | Output folder |
 | `--json` | ❌ | *(flag)* | Machine-readable JSON output (for AI callers) |
@@ -105,13 +106,19 @@ python page2context.py --url "https://example.com" --chrome-profile-dir ""
 # Execute custom JavaScript inside the page and wait until it finishes
 python page2context.py --url "https://example.com" --run-js-file "./script.js"
 
+# Wait 1200ms after load (before JS/screenshot) to let UI animations settle
+python page2context.py --url "https://example.com" --post-load-wait-ms 1200 --run-js-file "./script.js"
+
+# Example script: log browser cookies from JS
+python page2context.py --url "https://example.com" --console-log --run-js-file "./test/example_log_cookies.js"
+
 # Download only CSS/JS assets seen in source/network
 python page2context.py --url "https://example.com" --resources-regex "\\.(css|js)(\\?|$)"
 
 # All options — AI-friendly JSON output
 python page2context.py --url "https://example.com" \
   --size 1440x900 --crop "2x4:1,2" --console-log --chrome-profile-dir "~/.config/google-chrome" --run-js-file "./script.js" \
-  --resources-regex "\\.(css|js)(\\?|$)" --output my_capture --json
+  --post-load-wait-ms 1200 --resources-regex "\\.(css|js)(\\?|$)" --output my_capture --json
 ```
 
 ---
@@ -297,6 +304,7 @@ ERROR (3): Could not load URL: https://bad-url.invalid
   "version":    "1.0.0",
   "url":        "https://example.com",
   "viewport":   "1280x720",
+  "post_load_wait_ms": 1200,
   "output_dir": "page2context",
   "context":    "page2context/p2cxt_context.md",
   "html":       "page2context/p2cxt_html.html",

@@ -20,7 +20,7 @@ plus a separate fixed DOM file `p2cxt_html.html`.
 Always add `--json` so you can parse the result reliably.
 
 ```bash
-python page2context.py [--clean-temp] [--url "<URL>"] [--size <WxH>] [--crop <COLSxROWS:TILES>] [--console-log] [--chrome-profile-dir [DIR]] [--run-js-file <PATH>] [--resources-regex <REGEX>] [--output <DIR>] --json
+python page2context.py [--clean-temp] [--url "<URL>"] [--size <WxH>] [--crop <COLSxROWS:TILES>] [--console-log] [--chrome-profile-dir [DIR]] [--run-js-file <PATH>] [--post-load-wait-ms <MS>] [--resources-regex <REGEX>] [--output <DIR>] --json
 ```
 
 `--url` is required unless using only `--clean-temp`.
@@ -36,6 +36,7 @@ python page2context.py [--clean-temp] [--url "<URL>"] [--size <WxH>] [--crop <CO
 | `--console-log` | ❌ | *(flag)* | Save console/page/navigation errors to `p2cxt_console.log` |
 | `--chrome-profile-dir` | ❌ | *(none)* | Copy this Chrome user-data dir to ephemeral run profile and delete copy at end. Pass empty (`""`) to auto-detect first default profile. |
 | `--run-js-file` | ❌ | *(none)* | Execute JS file in page and wait for completion |
+| `--post-load-wait-ms` | ❌ | `0` | Extra wait in milliseconds after page load and before `--run-js-file`/screenshot |
 | `--resources-regex` | ❌ | *(none)* | Download resources whose URL matches regex from HTML + observed traffic |
 | `--output` | ❌ | `page2context` | Output folder name |
 | `--json` | ✅ | *(flag)* | Always pass this for structured output |
@@ -56,6 +57,8 @@ left-to-right, top-to-bottom from 1. Each tile is saved as a separate PNG.
 --chrome-profile-dir "~/.config/google-chrome" → run with a temporary copied Chrome profile, cleaned at script end
 --chrome-profile-dir "" → auto-detect first default Chrome profile; errors if not found
 --run-js-file "./script.js" → execute script in browser and wait until it finishes
+--post-load-wait-ms 1200 → wait after load before running JS/screenshot (useful for animations)
+--run-js-file "./test/example_log_cookies.js" --console-log → log accessible browser cookies into p2cxt_console.log
 ```
 
 History cache location:
@@ -72,6 +75,7 @@ History cache location:
   "version":    "1.0.0",
   "url":        "https://example.com",
   "viewport":   "1280x720",
+  "post_load_wait_ms": 1200,
   "output_dir": "page2context",
   "context":    "page2context/p2cxt_context.md",
   "html":       "page2context/p2cxt_html.html",

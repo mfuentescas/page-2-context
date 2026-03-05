@@ -132,6 +132,8 @@ SYNTAX_HELP = textwrap.dedent("""\
                                    user Chrome profile for your OS.
       --run-js-file <PATH>      Execute JavaScript file in the opened page
                                   and wait for completion.
+      --post-load-wait-ms <MS>  Extra wait after page load and before
+                                  --run-js-file/screenshot (default: 0).
       --resources-regex <REGEX> Download resources whose URL matches REGEX
                                    from HTML references and Playwright-observed traffic.
        --output <DIR>             Output folder          (default: page2context)
@@ -145,6 +147,7 @@ SYNTAX_HELP = textwrap.dedent("""\
       python page2context.py --url "https://example.com" --chrome-profile-dir "~/.config/google-chrome"
       python page2context.py --url "https://example.com" --chrome-profile-dir ""
       python page2context.py --url "https://example.com" --run-js-file "./script.js"
+      python page2context.py --url "https://example.com" --post-load-wait-ms 750
       python page2context.py --url "https://example.com" --resources-regex "\\.(css|js)(\\?|$)"
       python page2context.py --url "https://example.com" --size 1440x900 \\
                               --crop "2x4:1,2" --output my_capture
@@ -200,6 +203,11 @@ def parse_args():
         "--run-js-file",
         default=None,
         help="Path to a JavaScript file to execute in the opened page and wait until it completes.",
+    )
+    parser.add_argument(
+        "--post-load-wait-ms",
+        default="0",
+        help="Extra wait in milliseconds after page load and before --run-js-file/screenshot.",
     )
     parser.add_argument(
         "--resources-regex",
@@ -284,6 +292,20 @@ def parse_crop(crop_str: str) -> tuple[int, int, list[int]]:
             valid_range=[1, max_tile],
         )
     return cols, rows, tiles
+
+
+def parse_wait_ms(wait_ms_str: str) -> int:
+    try:
+        wait_ms = int(wait_ms_str)
+    except ValueError:
+        raise _CliArgError(
+            f"Invalid --post-load-wait-ms value: {wait_ms_str!r}. Expected a non-negative integer (milliseconds)."
+        )
+    if wait_ms < 0:
+        raise _CliArgError(
+            f"Invalid --post-load-wait-ms value: {wait_ms!r}. Expected >= 0."
+        )
+    return wait_ms
 
 
 def _load_js_file(path_str: str | None) -> tuple[pathlib.Path | None, str | None]:
@@ -618,6 +640,11 @@ def main():
     except _CliArgError as exc:
         _error_exit(EXIT_BAD_ARGS, exc.message, **exc.extra)
 
+    try:
+        post_load_wait_ms = parse_wait_ms(args.post_load_wait_ms)
+    except _CliArgError as exc:
+        _error_exit(EXIT_BAD_ARGS, exc.message, **exc.extra)
+
     resources_regex = _compile_regex_or_exit(args.resources_regex)
     js_file_path, js_source = _load_js_file(args.run_js_file)
     resolved_chrome_source = _resolve_requested_chrome_profile_dir(args.chrome_profile_dir)
@@ -699,6 +726,8 @@ def main():
 
             page.set_viewport_size({"width": viewport_w, "height": viewport_h})
             page.goto(args.url, wait_until="networkidle", timeout=30_000)
+            if post_load_wait_ms > 0:
+                page.wait_for_timeout(post_load_wait_ms)
 
             if js_source is not None:
                 try:
@@ -828,6 +857,7 @@ def main():
         "version":    __version__,
         "url":        args.url,
         "viewport":   f"{viewport_w}x{viewport_h}",
+        "post_load_wait_ms": post_load_wait_ms,
         "output_dir": str(output_dir),
         "context":    str(md_path),
         "html":       str(html_path),

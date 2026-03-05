@@ -118,6 +118,29 @@ print(len(value) if isinstance(value, list) else 0)
 PY
 }
 
+json_nested_field() {
+  local json_payload="$1"
+  local parent="$2"
+  local child="$3"
+  python3 - "$json_payload" "$parent" "$child" <<'PY'
+import json
+import sys
+
+payload = json.loads(sys.argv[1])
+parent = sys.argv[2]
+child = sys.argv[3]
+node = payload.get(parent, {}) if isinstance(payload, dict) else {}
+value = node.get(child) if isinstance(node, dict) else None
+
+if value is None:
+    print("")
+elif isinstance(value, (dict, list)):
+    print(json.dumps(value))
+else:
+    print(value)
+PY
+}
+
 json_resources_stats() {
   local json_payload="$1"
   python3 - "$json_payload" <<'PY'
@@ -253,6 +276,14 @@ mkdir -p "${TMP_DIR}"
 trap 'stop_server; cleanup' EXIT
 export P2CXT_STATE_DIR="${TMP_DIR}/state"
 check_runtime_deps
+PLAYWRIGHT_BROWSERS_PATH_VALUE="$(python3 - <<'PY'
+from pathlib import Path
+from playwright.sync_api import sync_playwright
+
+with sync_playwright() as p:
+    print(Path(p.chromium.executable_path).resolve().parents[2])
+PY
+)"
 start_server
 
 info "Test 1: no arguments prints syntax and exits 2"
@@ -260,6 +291,7 @@ run_and_capture OUT EC "${SCRIPT[@]}"
 assert_eq "exit code is 2" "$EC" "2"
 [[ "$OUT" == *"--url"* ]] && ok "help contains --url" || fail "help missing --url"
 [[ "$OUT" == *"--json"* ]] && ok "help contains --json" || fail "help missing --json"
+[[ "$OUT" == *"--chrome-profile-dir"* ]] && ok "help contains --chrome-profile-dir" || fail "help missing --chrome-profile-dir"
 
 info "Test 2: JSON success returns absolute output list and prefixed files"
 OUT_DIR="${TMP_DIR}/run_json"
@@ -269,6 +301,8 @@ assert_eq "json status=success" "$(json_field "$OUT" "status")" "success"
 assert_eq "json files has 3 files (no crop)" "$(json_len "$OUT" "files")" "3"
 assert_eq "json files values are absolute" "$(json_all_abs "$OUT" "files")" "True"
 assert_eq "json output has 3 files (no crop)" "$(json_len "$OUT" "output")" "3"
+assert_eq "json chrome_profile_source key present" "$(json_has_key "$OUT" "chrome_profile_source")" "True"
+assert_eq "json chrome_profile_source empty without profile option" "$(json_field "$OUT" "chrome_profile_source")" ""
 [[ -f "${OUT_DIR}/p2cxt_screenshot.png" ]] && ok "p2cxt_screenshot.png created" || fail "p2cxt_screenshot.png missing"
 [[ -f "${OUT_DIR}/p2cxt_context.md" ]] && ok "p2cxt_context.md created" || fail "p2cxt_context.md missing"
 [[ -f "${OUT_DIR}/p2cxt_html.html" ]] && ok "p2cxt_html.html created" || fail "p2cxt_html.html missing"
@@ -279,10 +313,17 @@ OUT_DIR_TEXT="${TMP_DIR}/run_text"
 run_and_capture OUT EC "${SCRIPT[@]}" --url "${TEST_URL}" --output "${OUT_DIR_TEXT}"
 assert_eq "text exit code is 0" "$EC" "0"
 LINE_COUNT="$(printf '%s\n' "$OUT" | sed '/^$/d' | wc -l | tr -d ' ')"
-assert_eq "text output has 4 lines" "$LINE_COUNT" "4"
+assert_eq "text output has 5 lines" "$LINE_COUNT" "5"
 HISTORY_LINE_SEEN="False"
+CHROME_PROFILE_SOURCE_SEEN="False"
 while IFS= read -r line; do
   [[ -z "$line" ]] && continue
+  if [[ "$line" == chrome_profile_source:* ]]; then
+    CHROME_VALUE="${line#chrome_profile_source: }"
+    [[ -z "$CHROME_VALUE" ]] && ok "chrome_profile_source empty when no profile is used" || fail "chrome_profile_source expected empty but got: $CHROME_VALUE"
+    CHROME_PROFILE_SOURCE_SEEN="True"
+    continue
+  fi
   if [[ "$line" == history_file:* ]]; then
     HISTORY_PATH="${line#history_file: }"
     [[ "$HISTORY_PATH" == /* ]] && ok "history file path is absolute" || fail "history file path is not absolute"
@@ -293,6 +334,7 @@ while IFS= read -r line; do
   [[ "$line" == /* ]] && ok "line is absolute: $line" || fail "line is not absolute: $line"
   [[ -f "$line" ]] && ok "file exists: $line" || fail "file does not exist: $line"
 done <<< "$OUT"
+assert_eq "chrome_profile_source line present" "$CHROME_PROFILE_SOURCE_SEEN" "True"
 assert_eq "history_file line present" "$HISTORY_LINE_SEEN" "True"
 
 info "Test 4: clean-temp alone removes historical artifacts and exits 0"
@@ -326,10 +368,17 @@ OUT_DIR_TEXT="${TMP_DIR}/run_text"
 run_and_capture OUT EC "${SCRIPT[@]}" --url "${TEST_URL}" --output "${OUT_DIR_TEXT}"
 assert_eq "text exit code is 0" "$EC" "0"
 LINE_COUNT="$(printf '%s\n' "$OUT" | sed '/^$/d' | wc -l | tr -d ' ')"
-assert_eq "text output has 4 lines" "$LINE_COUNT" "4"
+assert_eq "text output has 5 lines" "$LINE_COUNT" "5"
 HISTORY_LINE_SEEN="False"
+CHROME_PROFILE_SOURCE_SEEN="False"
 while IFS= read -r line; do
   [[ -z "$line" ]] && continue
+  if [[ "$line" == chrome_profile_source:* ]]; then
+    CHROME_VALUE="${line#chrome_profile_source: }"
+    [[ -z "$CHROME_VALUE" ]] && ok "chrome_profile_source empty when no profile is used" || fail "chrome_profile_source expected empty but got: $CHROME_VALUE"
+    CHROME_PROFILE_SOURCE_SEEN="True"
+    continue
+  fi
   if [[ "$line" == history_file:* ]]; then
     HISTORY_PATH="${line#history_file: }"
     [[ "$HISTORY_PATH" == /* ]] && ok "history file path is absolute" || fail "history file path is not absolute"
@@ -340,6 +389,7 @@ while IFS= read -r line; do
   [[ "$line" == /* ]] && ok "line is absolute: $line" || fail "line is not absolute: $line"
   [[ -f "$line" ]] && ok "file exists: $line" || fail "file does not exist: $line"
 done <<< "$OUT"
+assert_eq "chrome_profile_source line present" "$CHROME_PROFILE_SOURCE_SEEN" "True"
 assert_eq "history_file line present" "$HISTORY_LINE_SEEN" "True"
 
 info "Test 7: crop creates prefixed tiles and reports them"
@@ -390,7 +440,57 @@ grep -q "p2cxt_console.log" "${OUT_DIR_CONSOLE_JS}/p2cxt_context.md" && ok "cont
 grep -q "custom js executed" "${OUT_DIR_CONSOLE_JS}/p2cxt_console.log" && ok "console log captured custom script output" || fail "console log missing custom script output"
 grep -q "data-p2cxt-js=\"done\"" "${OUT_DIR_CONSOLE_JS}/p2cxt_html.html" && ok "custom JS modified DOM" || fail "custom JS DOM effect missing"
 
-info "Test 10: existing output dir cleans only p2cxt_* files"
+info "Test 10: chrome-profile-dir uses ephemeral copy and cleans it"
+OUT_DIR_CHROME_TMP="${TMP_DIR}/run_chrome_tmp"
+CHROME_TMP_SRC="${TMP_DIR}/chrome_temp_source"
+mkdir -p "${CHROME_TMP_SRC}/Default"
+printf 'local-state' > "${CHROME_TMP_SRC}/Local State"
+printf '{"test":true}' > "${CHROME_TMP_SRC}/Default/Preferences"
+CHROME_TMP_SRC_ABS="$(cd "${CHROME_TMP_SRC}" && pwd)"
+
+run_and_capture OUT EC "${SCRIPT[@]}" --url "${TEST_URL}" --output "${OUT_DIR_CHROME_TMP}" --chrome-profile-dir "${CHROME_TMP_SRC}" --json
+assert_eq "chrome-profile-dir exit code is 0" "$EC" "0"
+assert_eq "chrome-profile-dir status=success" "$(json_field "$OUT" "status")" "success"
+assert_eq "chrome_profile_source matches explicit profile" "$(json_field "$OUT" "chrome_profile_source")" "${CHROME_TMP_SRC_ABS}"
+assert_eq "chrome_profile key present" "$(json_has_key "$OUT" "chrome_profile")" "True"
+assert_eq "chrome_profile source matches" "$(json_nested_field "$OUT" "chrome_profile" "source")" "${CHROME_TMP_SRC_ABS}"
+assert_eq "chrome_profile cleaned=true" "$(json_nested_field "$OUT" "chrome_profile" "cleaned")" "True"
+TEMP_COPY_PATH="$(json_nested_field "$OUT" "chrome_profile" "temp_copy")"
+[[ "$TEMP_COPY_PATH" == /* ]] && ok "chrome temp copy path is absolute" || fail "chrome temp copy path is not absolute"
+[[ ! -e "$TEMP_COPY_PATH" ]] && ok "chrome temp copy removed after run" || fail "chrome temp copy still exists after run"
+grep -q "Chrome Profile Copy" "${OUT_DIR_CHROME_TMP}/p2cxt_context.md" && ok "context includes chrome profile copy section" || fail "context missing chrome profile copy section"
+
+info "Test 11: chrome-profile-dir empty auto-discovers first default profile"
+OUT_DIR_CHROME_AUTO="${TMP_DIR}/run_chrome_auto"
+AUTO_HOME="${TMP_DIR}/home_auto"
+AUTO_PROFILE="${AUTO_HOME}/.config/google-chrome"
+mkdir -p "${AUTO_PROFILE}/Default"
+printf 'local-state' > "${AUTO_PROFILE}/Local State"
+AUTO_PROFILE_ABS="$(cd "${AUTO_PROFILE}" && pwd)"
+
+run_and_capture OUT EC env HOME="${AUTO_HOME}" PLAYWRIGHT_BROWSERS_PATH="${PLAYWRIGHT_BROWSERS_PATH_VALUE}" "${SCRIPT[@]}" --url "${TEST_URL}" --output "${OUT_DIR_CHROME_AUTO}" --chrome-profile-dir "" --json
+STATUS_AUTO="$(json_field "$OUT" "status")"
+if [[ "$STATUS_AUTO" == "success" || "$STATUS_AUTO" == "error" ]]; then
+  ok "chrome-profile-dir auto-discovery returned a valid status"
+else
+  fail "chrome-profile-dir auto-discovery returned unexpected status: $STATUS_AUTO"
+fi
+assert_eq "chrome_profile_source matches auto-discovered profile" "$(json_field "$OUT" "chrome_profile_source")" "${AUTO_PROFILE_ABS}"
+if [[ "$STATUS_AUTO" == "success" ]]; then
+  assert_eq "chrome_profile source matches auto-discovered profile" "$(json_nested_field "$OUT" "chrome_profile" "source")" "${AUTO_PROFILE_ABS}"
+fi
+
+info "Test 12: chrome-profile-dir empty returns exit_code=4 when no profile is found"
+MISSING_HOME="${TMP_DIR}/home_missing"
+mkdir -p "${MISSING_HOME}"
+run_and_capture OUT EC env HOME="${MISSING_HOME}" "${SCRIPT[@]}" --url "${TEST_URL}" --output "${TMP_DIR}/run_chrome_missing" --chrome-profile-dir "" --json
+assert_eq "chrome-profile-dir missing auto-discovery process exit code is 4" "$EC" "4"
+assert_eq "chrome-profile-dir missing auto-discovery status=error" "$(json_field "$OUT" "status")" "error"
+assert_eq "chrome-profile-dir missing auto-discovery chrome_profile_source key present" "$(json_has_key "$OUT" "chrome_profile_source")" "True"
+assert_eq "chrome-profile-dir missing auto-discovery chrome_profile_source is empty" "$(json_field "$OUT" "chrome_profile_source")" ""
+assert_eq "chrome-profile-dir missing auto-discovery exit_code field=4" "$(json_field "$OUT" "exit_code")" "4"
+
+info "Test 13: existing output dir cleans only p2cxt_* files"
 OUT_DIR_CLEAN="${TMP_DIR}/run_cleanup"
 mkdir -p "${OUT_DIR_CLEAN}"
 printf 'keep' > "${OUT_DIR_CLEAN}/keep.txt"
@@ -400,20 +500,20 @@ assert_eq "cleanup run exit code is 0" "$EC" "0"
 [[ -f "${OUT_DIR_CLEAN}/keep.txt" ]] && ok "non-prefixed file kept" || fail "non-prefixed file removed"
 [[ ! -e "${OUT_DIR_CLEAN}/p2cxt_old.tmp" ]] && ok "old prefixed file removed" || fail "old prefixed file not removed"
 
-info "Test 11: invalid --size returns exit_code=2 in json"
+info "Test 14: invalid --size returns exit_code=2 in json"
 run_and_capture OUT EC "${SCRIPT[@]}" --url "${TEST_URL}" --size "bad" --json
 assert_eq "invalid size process exit code is 2" "$EC" "2"
 assert_eq "invalid size status=error" "$(json_field "$OUT" "status")" "error"
 assert_eq "invalid size exit_code field=2" "$(json_field "$OUT" "exit_code")" "2"
 
-info "Test 12: out-of-range tile returns exit_code=2 and valid_range"
+info "Test 15: out-of-range tile returns exit_code=2 and valid_range"
 run_and_capture OUT EC "${SCRIPT[@]}" --url "${TEST_URL}" --crop "2x2:99" --json
 assert_eq "out-of-range process exit code is 2" "$EC" "2"
 assert_eq "out-of-range status=error" "$(json_field "$OUT" "status")" "error"
 assert_eq "out-of-range exit_code field=2" "$(json_field "$OUT" "exit_code")" "2"
 assert_eq "valid_range is present" "$(json_has_key "$OUT" "valid_range")" "True"
 
-info "Test 13: invalid --resources-regex returns exit_code=2 in json"
+info "Test 16: invalid --resources-regex returns exit_code=2 in json"
 run_and_capture OUT EC "${SCRIPT[@]}" --url "${TEST_URL}" --resources-regex "(" --json
 assert_eq "invalid regex process exit code is 2" "$EC" "2"
 assert_eq "invalid regex status=error" "$(json_field "$OUT" "status")" "error"

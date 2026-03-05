@@ -39,6 +39,7 @@ python page2context.py \
   --size   "<WIDTHxHEIGHT>" \
   --crop   "<COLSxROWS:TILE[,TILE]>" \
   --console-log \
+  --chrome-profile-dir "<DIR>" \
   --run-js-file "<PATH>" \
   --resources-regex "<REGEX>" \
   --output "<folder-name>" \
@@ -54,6 +55,7 @@ python page2context.py \
 | `--crop` | ❌ | *(none)* | Grid crop spec — see below |
 | `--clean-temp` | ❌ | *(flag)* | Clean historical `p2cxt_*` artifacts from tracked cache |
 | `--console-log` | ❌ | *(flag)* | Save console/page/navigation errors into `p2cxt_console.log` |
+| `--chrome-profile-dir` | ❌ | *(none)* | Copy Chrome user-data dir to ephemeral run profile and delete copy at end. Pass empty (`""`) to auto-detect first default profile. |
 | `--run-js-file` | ❌ | *(none)* | Execute JS file in browser page and wait until it finishes |
 | `--resources-regex` | ❌ | *(none)* | Download resources whose URL matches regex from HTML refs + observed traffic |
 | `--output` | ❌ | `page2context` | Output folder |
@@ -109,12 +111,19 @@ p2cxt_context.md:
   "context":    "page2context/p2cxt_context.md",
   "html":       "page2context/p2cxt_html.html",
   "screenshot": "page2context/p2cxt_screenshot.png",
+  "chrome_profile_source": "/home/user/.config/google-chrome",
   "cleanup_before_run": {
     "cleaned": ["/abs/path/old/p2cxt_context.md"],
     "failed": [],
     "cleaned_files": 1
   },
   "console_log": "page2context/p2cxt_console.log",
+  "chrome_profile": {
+    "source": "/home/user/.config/google-chrome",
+    "temp_copy": "/tmp/p2cxt_chrome_copy_xxx/profile",
+    "used": true,
+    "cleaned": true
+  },
   "script": {
     "file": "script.js",
     "result": "done"
@@ -141,16 +150,20 @@ p2cxt_context.md:
     "grid":  "3x9",
     "tiles": [1, 27],
     "files": ["/abs/path/page2context/p2cxt_tile_1.png", "/abs/path/page2context/p2cxt_tile_27.png"]
-  }
+  },
+  "history_file": "/home/user/.cache/page2context/artifact_history.json"
 }
 ```
 
 > `crop` is only present when `--crop` was used.
 > `resources` is only present when `--resources-regex` was used.
 > `output`/`files` are always present and contain absolute artifact paths.
+> `chrome_profile_source` is always present and is `""` when no Chrome profile was used.
 > `console_log` is only present when `--console-log` is used.
+> `chrome_profile` is only present when `--chrome-profile-dir` is used.
 > `script` is only present when `--run-js-file` is used.
 > `cleanup_before_run` is only present when `--clean-temp` is combined with capture.
+> `history_file` is always present.
 
 ### Clean-only success (`--clean-temp` without `--url`)
 
@@ -159,6 +172,7 @@ p2cxt_context.md:
   "status": "success",
   "message": "Historical temporary artifacts cleaned.",
   "version": "1.0.0",
+  "chrome_profile_source": "",
   "cleaned_files": 3,
   "cleaned": ["/abs/path/.../p2cxt_context.md"],
   "failed": [],
@@ -201,10 +215,11 @@ p2cxt_context.md:
 4. Read <output_dir>/p2cxt_html.html — contains full DOM HTML
 5. If clean-only mode was requested, report cleaned_files/failed and stop
 6. If enabled, read <output_dir>/p2cxt_console.log for console/navigation/browser errors
-7. If provided, use `resources.files` artifacts (`p2cxt_resource_*`) for CSS/JS inspection
-8. If provided, inspect `script.result` from executed JS
-9. Use all files to answer the user's question
-10. Be aware the tool cleans previous `p2cxt_*` files in an existing output dir
+7. If enabled, inspect `chrome_profile.cleaned` to confirm temp-copy cleanup
+8. If provided, use `resources.files` artifacts (`p2cxt_resource_*`) for CSS/JS inspection
+9. If provided, inspect `script.result` from executed JS
+10. Use all files to answer the user's question
+11. Be aware the tool cleans previous `p2cxt_*` files in an existing output dir
 ```
 
 ---

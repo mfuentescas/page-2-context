@@ -67,6 +67,7 @@ Running with no arguments prints full usage help.
 | `--size <WxH>` | ❌ | `1280x720` | Viewport size, e.g. `1920x1080` |
 | `--crop <spec>` | ❌ | *(none)* | Grid crop — see below |
 | `--console-log` | ❌ | *(flag)* | Capture browser console/page/navigation errors into `p2cxt_console.log` |
+| `--chrome-profile-dir [dir]` | ❌ | *(none)* | Chrome user profile dir to copy into an ephemeral run profile; pass empty (`""`) to auto-detect first default profile for your OS |
 | `--run-js-file <path>` | ❌ | *(none)* | Execute a JS file inside the opened page and wait for completion |
 | `--resources-regex <regex>` | ❌ | *(none)* | Download matching resources seen in HTML or browser traffic |
 | `--output <dir>` | ❌ | `page2context` | Output folder |
@@ -95,6 +96,12 @@ python page2context.py --url "https://example.com" --crop "3x9:1,27"
 # Capture browser console/page errors
 python page2context.py --url "https://example.com" --console-log
 
+# Use a copied Chrome user profile directory for this run
+python page2context.py --url "https://example.com" --chrome-profile-dir "~/.config/google-chrome"
+
+# Auto-detect first default Chrome profile (errors if none is found)
+python page2context.py --url "https://example.com" --chrome-profile-dir ""
+
 # Execute custom JavaScript inside the page and wait until it finishes
 python page2context.py --url "https://example.com" --run-js-file "./script.js"
 
@@ -103,7 +110,7 @@ python page2context.py --url "https://example.com" --resources-regex "\\.(css|js
 
 # All options — AI-friendly JSON output
 python page2context.py --url "https://example.com" \
-  --size 1440x900 --crop "2x4:1,2" --console-log --run-js-file "./script.js" \
+  --size 1440x900 --crop "2x4:1,2" --console-log --chrome-profile-dir "~/.config/google-chrome" --run-js-file "./script.js" \
   --resources-regex "\\.(css|js)(\\?|$)" --output my_capture --json
 ```
 
@@ -232,14 +239,34 @@ See [p2cxt_console.log](p2cxt_console.log) for captured console output and brows
 
 ### With `--run-js-file "./script.js"`
 
-`p2cxt_context.md` adds:
-
 ```markdown
 ## Executed JS
 
 - File: `script.js`
 - Result: `...`
 ```
+
+### With `--chrome-profile-dir "~/.config/google-chrome"`
+
+The tool creates a temporary copy of the provided directory, uses that copy
+for the browser session, and removes it when the script finishes.
+
+`p2cxt_context.md` adds:
+
+```markdown
+## Chrome Profile Copy
+
+- Source: `/home/user/.config/google-chrome`
+- Temp copy: `/tmp/p2cxt_chrome_copy_xxx/profile`
+- Used as persistent profile: `True`
+- Copy cleaned: `True`
+```
+
+### With `--chrome-profile-dir ""`
+
+When passed empty, the tool tries to auto-detect the first Chrome/Chromium
+user-data directory from common OS paths (Linux/macOS/Windows). If none is
+found, it exits with an error asking you to pass `--chrome-profile-dir <DIR>`.
 
 ---
 
@@ -251,6 +278,8 @@ See [p2cxt_console.log](p2cxt_console.log) for captured console output and brows
 /abs/path/page2context/p2cxt_screenshot.png
 /abs/path/page2context/p2cxt_context.md
 /abs/path/page2context/p2cxt_html.html
+chrome_profile_source:
+history_file: /home/user/.cache/page2context/artifact_history.json
 ```
 
 Errors go to **stderr**:
@@ -272,7 +301,14 @@ ERROR (3): Could not load URL: https://bad-url.invalid
   "context":    "page2context/p2cxt_context.md",
   "html":       "page2context/p2cxt_html.html",
   "screenshot": "page2context/p2cxt_screenshot.png",
+  "chrome_profile_source": "/home/user/.config/google-chrome",
   "console_log": "page2context/p2cxt_console.log",
+  "chrome_profile": {
+    "source": "/home/user/.config/google-chrome",
+    "temp_copy": "/tmp/p2cxt_chrome_copy_xxx/profile",
+    "used": true,
+    "cleaned": true
+  },
   "script": {
     "file": "script.js",
     "result": "done"
@@ -305,7 +341,8 @@ ERROR (3): Could not load URL: https://bad-url.invalid
     "grid":  "3x9",
     "tiles": [1, 27],
     "files": ["/abs/path/page2context/p2cxt_tile_1.png", "/abs/path/page2context/p2cxt_tile_27.png"]
-  }
+  },
+  "history_file": "/home/user/.cache/page2context/artifact_history.json"
 }
 ```
 
@@ -316,6 +353,7 @@ ERROR (3): Could not load URL: https://bad-url.invalid
   "status": "success",
   "message": "Historical temporary artifacts cleaned.",
   "version": "1.0.0",
+  "chrome_profile_source": "",
   "cleaned_files": 3,
   "cleaned": ["/abs/path/.../p2cxt_context.md"],
   "failed": [],
@@ -324,10 +362,13 @@ ERROR (3): Could not load URL: https://bad-url.invalid
 }
 ```
 
+> `chrome_profile_source` is always present. It is empty when no Chrome profile was used.
+> `chrome_profile` is only present when `--chrome-profile-dir` is used and copy setup succeeded.
 > `resources` is only present when `--resources-regex` is used.
 > `console_log` is only present when `--console-log` is used.
 > `script` is only present when `--run-js-file` is used.
 > `cleanup_before_run` is present when `--clean-temp` is combined with capture options.
+> `history_file` is always present.
 > `output`/`files` always contain absolute artifact paths.
 
 ### Exit codes

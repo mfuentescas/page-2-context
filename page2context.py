@@ -10,7 +10,9 @@ import math
 import os
 import pathlib
 import re
+import shutil
 import sys
+import tempfile
 import textwrap
 import traceback
 from typing import NoReturn
@@ -40,6 +42,7 @@ EXIT_UNEXPECTED     = 99
 OUTPUT_PREFIX = "p2cxt_"
 STATE_DIR_ENV = "P2CXT_STATE_DIR"
 STATE_FILE_NAME = "artifact_history.json"
+CHROME_VOLATILE_SINGLETON_FILES = {"SingletonLock", "SingletonCookie", "SingletonSocket"}
 
 
 def _history_file_full_path() -> str:
@@ -49,9 +52,12 @@ def _history_file_full_path() -> str:
 # Output helpers
 # ---------------------------------------------------------------------------
 _json_mode: bool = False
+_chrome_profile_source_output: str = ""
 def _emit(payload: dict) -> None:
     if "history_file" not in payload:
         payload = {**payload, "history_file": _history_file_full_path()}
+    if "chrome_profile_source" not in payload:
+        payload = {**payload, "chrome_profile_source": _chrome_profile_source_output}
     if _json_mode:
         print(json.dumps(payload, ensure_ascii=False, indent=2), flush=True)
     else:
@@ -66,6 +72,8 @@ def _emit_text(payload: dict) -> None:
         else:
             # Backward-compatible fallback
             print(payload.get("output_dir", ""))
+        if "chrome_profile_source" in payload:
+            print(f"chrome_profile_source: {payload.get('chrome_profile_source', '')}")
         history_file = payload.get("history_file")
         if history_file:
             print(f"history_file: {history_file}")
@@ -80,6 +88,8 @@ def _emit_text(payload: dict) -> None:
             print(f"  valid tile range: {r[0]}-{r[1]}", file=sys.stderr)
         if "detail" in payload:
             print(f"  detail: {payload['detail']}", file=sys.stderr)
+        if "chrome_profile_source" in payload:
+            print(f"  chrome_profile_source: {payload.get('chrome_profile_source', '')}", file=sys.stderr)
         history_file = payload.get("history_file")
         if history_file:
             print(f"  history_file: {history_file}", file=sys.stderr)
@@ -114,7 +124,12 @@ SYNTAX_HELP = textwrap.dedent("""\
                                    tile as a separate image (p2cxt_tile_1.png, etc.)
                                    in the output folder.
       --console-log             Save browser console/navigation errors to
-                                  p2cxt_console.log in the output folder.
+                                   p2cxt_console.log in the output folder.
+      --chrome-profile-dir [DIR]
+                                 Chrome profile dir to copy into an ephemeral
+                                   working profile for this run. If passed empty,
+                                   the script tries to auto-detect a default
+                                   user Chrome profile for your OS.
       --run-js-file <PATH>      Execute JavaScript file in the opened page
                                   and wait for completion.
       --resources-regex <REGEX> Download resources whose URL matches REGEX
@@ -127,6 +142,8 @@ SYNTAX_HELP = textwrap.dedent("""\
       python page2context.py --url "https://example.com" --size 1920x1080
       python page2context.py --url "https://example.com" --crop "3x9:1,27"
       python page2context.py --url "https://example.com" --console-log
+      python page2context.py --url "https://example.com" --chrome-profile-dir "~/.config/google-chrome"
+      python page2context.py --url "https://example.com" --chrome-profile-dir ""
       python page2context.py --url "https://example.com" --run-js-file "./script.js"
       python page2context.py --url "https://example.com" --resources-regex "\\.(css|js)(\\?|$)"
       python page2context.py --url "https://example.com" --size 1440x900 \\
@@ -171,6 +188,13 @@ def parse_args():
         "--console-log",
         action="store_true",
         help="Save browser console, page errors, and request failures to p2cxt_console.log.",
+    )
+    parser.add_argument(
+        "--chrome-profile-dir",
+        nargs="?",
+        const="",
+        default=None,
+        help="Chrome profile directory to copy into an ephemeral working profile for this run. Pass empty to auto-detect.",
     )
     parser.add_argument(
         "--run-js-file",
@@ -282,6 +306,103 @@ def _write_console_log(path: pathlib.Path, lines: list[str]) -> None:
                 f.write("[info] No console/page errors captured.\n")
     except OSError as exc:
         _error_exit(EXIT_IO_ERR, f"Cannot write console log: {exc}", path=str(path))
+
+
+def _candidate_chrome_profile_dirs() -> list[pathlib.Path]:
+    home = pathlib.Path.home()
+    candidates: list[pathlib.Path] = []
+
+    if sys.platform.startswith("linux"):
+        candidates.extend([
+            home / ".config" / "google-chrome",
+            home / ".config" / "chromium",
+            home / ".var" / "app" / "com.google.Chrome" / "config" / "google-chrome",
+        ])
+    elif sys.platform == "darwin":
+        candidates.extend([
+            home / "Library" / "Application Support" / "Google" / "Chrome",
+            home / "Library" / "Application Support" / "Chromium",
+        ])
+    elif os.name == "nt":
+        local_app_data = os.environ.get("LOCALAPPDATA")
+        roaming_app_data = os.environ.get("APPDATA")
+        if local_app_data:
+            local_root = pathlib.Path(local_app_data)
+            candidates.extend([
+                local_root / "Google" / "Chrome" / "User Data",
+                local_root / "Chromium" / "User Data",
+            ])
+        if roaming_app_data:
+            roaming_root = pathlib.Path(roaming_app_data)
+            candidates.append(roaming_root / "Google" / "Chrome" / "User Data")
+
+    # Keep order while removing duplicates.
+    return list(dict.fromkeys(candidates))
+
+
+def _looks_like_chrome_profile_dir(path: pathlib.Path) -> bool:
+    return (
+        (path / "Local State").is_file()
+        or (path / "Default").is_dir()
+        or any(path.glob("Profile *"))
+    )
+
+
+def _discover_chrome_profile_dir() -> pathlib.Path | None:
+    for candidate in _candidate_chrome_profile_dirs():
+        expanded = candidate.expanduser().resolve()
+        if expanded.exists() and expanded.is_dir() and _looks_like_chrome_profile_dir(expanded):
+            return expanded
+    return None
+
+
+def _resolve_requested_chrome_profile_dir(path_str: str | None) -> pathlib.Path | None:
+    if path_str is None:
+        return None
+
+    if path_str.strip() == "":
+        discovered = _discover_chrome_profile_dir()
+        if discovered is None:
+            _error_exit(
+                EXIT_IO_ERR,
+                "Could not auto-detect a Chrome profile for --chrome-profile-dir.",
+                hint="Pass --chrome-profile-dir <DIR> with your Chrome user data folder.",
+            )
+        return discovered
+
+    return pathlib.Path(path_str).expanduser().resolve()
+
+
+def _prepare_chrome_temp_copy(source: pathlib.Path | None) -> tuple[pathlib.Path | None, pathlib.Path | None, pathlib.Path | None]:
+    if source is None:
+        return None, None, None
+
+    if not source.exists() or not source.is_dir():
+        _error_exit(EXIT_IO_ERR, "Invalid --chrome-profile-dir: directory does not exist.", path=str(source))
+
+    def _ignore_volatile_singletons(dir_path: str, names: list[str]) -> set[str]:
+        # Chrome keeps ephemeral singleton files at profile root; copying them often fails.
+        if pathlib.Path(dir_path).resolve() != source:
+            return set()
+        return {name for name in names if name in CHROME_VOLATILE_SINGLETON_FILES}
+
+    try:
+        copy_root = pathlib.Path(tempfile.mkdtemp(prefix="p2cxt_chrome_copy_"))
+        copy_dir = copy_root / "profile"
+        shutil.copytree(source, copy_dir, ignore=_ignore_volatile_singletons)
+        return source, copy_dir, copy_root
+    except OSError as exc:
+        _error_exit(EXIT_IO_ERR, f"Cannot prepare Chrome temp copy: {exc}", path=str(source))
+
+
+def _cleanup_chrome_temp_copy(copy_root: pathlib.Path | None) -> bool:
+    if copy_root is None:
+        return True
+    try:
+        shutil.rmtree(copy_root)
+        return True
+    except OSError:
+        return False
 
 
 def _cleanup_prefixed_files(output_dir: pathlib.Path) -> None:
@@ -475,6 +596,7 @@ def _clean_historical_artifacts() -> dict:
 # Main
 # ---------------------------------------------------------------------------
 def main():
+    global _chrome_profile_source_output
     args = parse_args()
 
     clean_result = None
@@ -487,6 +609,7 @@ def main():
                 **clean_result,
                 output=[],
                 files=[],
+                chrome_profile_source="",
             )
             return
 
@@ -497,6 +620,11 @@ def main():
 
     resources_regex = _compile_regex_or_exit(args.resources_regex)
     js_file_path, js_source = _load_js_file(args.run_js_file)
+    resolved_chrome_source = _resolve_requested_chrome_profile_dir(args.chrome_profile_dir)
+    _chrome_profile_source_output = str(resolved_chrome_source) if resolved_chrome_source is not None else ""
+    chrome_source_dir, chrome_copy_dir, chrome_copy_root = _prepare_chrome_temp_copy(resolved_chrome_source)
+    chrome_copy_cleaned = False
+    chrome_profile_used = False
     output_dir = pathlib.Path(args.output)
     output_already_exists = output_dir.exists()
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -522,8 +650,23 @@ def main():
     observed_urls: set[str] = set()
     try:
         with sync_playwright() as p:
-            browser = p.chromium.launch()
-            page    = browser.new_page()
+            browser = None
+            context = None
+            if chrome_copy_dir is not None:
+                try:
+                    context = p.chromium.launch_persistent_context(user_data_dir=str(chrome_copy_dir), headless=True)
+                    page = context.pages[0] if context.pages else context.new_page()
+                    chrome_profile_used = True
+                except PlaywrightError as exc:
+                    if args.console_log:
+                        _log_console(f"[chrome-profile:fallback] {exc}")
+                    browser = p.chromium.launch()
+                    context = browser.new_context()
+                    page = context.new_page()
+            else:
+                browser = p.chromium.launch()
+                context = browser.new_context()
+                page = context.new_page()
 
             if args.console_log:
                 def _track_console(msg):
@@ -541,7 +684,9 @@ def main():
                 page.on("pageerror", _track_page_error)
                 page.on("requestfailed", _track_request_failed)
 
-                browser.on("disconnected", lambda _browser: _log_console("[browser] disconnected"))
+                observed_browser = context.browser if context is not None else browser
+                if observed_browser is not None:
+                    observed_browser.on("disconnected", lambda _browser: _log_console("[browser] disconnected"))
 
             def _track_request(req):
                 observed_urls.add(req.url)
@@ -579,7 +724,7 @@ def main():
 
             page.screenshot(path=str(full_screenshot), full_page=True)
             html = page.content()
-            browser.close()
+            context.close()
     except PlaywrightError as exc:
         if args.console_log:
             _log_console(f"[navigation:error] {exc}")
@@ -591,6 +736,11 @@ def main():
         elif "ERR_INTERNET_DISCONNECTED" in raw: reason = "No internet connection."
         else: reason = raw.splitlines()[0]
         _error_exit(EXIT_NAVIGATION_ERR, f"Could not load URL: {args.url}", reason=reason, url=args.url)
+    finally:
+        chrome_copy_cleaned = _cleanup_chrome_temp_copy(chrome_copy_root)
+        if chrome_copy_root is not None and not chrome_copy_cleaned:
+            _error_exit(EXIT_IO_ERR, "Cannot remove Chrome temp copy after run.", path=str(chrome_copy_root))
+
     if args.console_log:
         _write_console_log(console_log_path, console_lines)
     # -- Tile extraction (crop) ---------------------------------------------
@@ -626,6 +776,8 @@ def main():
             f.write(f"# Page context: {args.url}\n\n")
             if tile_paths:
                 # Multiple cropped tiles -> numbered Screenshots section
+                if crop_parsed is None:
+                    _error_exit(EXIT_UNEXPECTED, "Internal error: crop tiles exist but crop config is missing.")
                 cols, rows, tiles = crop_parsed
                 f.write("## Screenshots\n\n")
                 f.write(f"> Grid: {cols}x{rows} | captured tiles: {', '.join(str(t) for t in tiles)}\n\n")
@@ -647,6 +799,13 @@ def main():
                 f.write("\n## Executed JS\n\n")
                 f.write(f"- File: `{js_file_path}`\n")
                 f.write(f"- Result: `{script_result}`\n")
+
+            if chrome_source_dir is not None and chrome_copy_dir is not None:
+                f.write("\n## Chrome Profile Copy\n\n")
+                f.write(f"- Source: `{chrome_source_dir}`\n")
+                f.write(f"- Temp copy: `{chrome_copy_dir}`\n")
+                f.write(f"- Used as persistent profile: `{chrome_profile_used}`\n")
+                f.write(f"- Copy cleaned: `{chrome_copy_cleaned}`\n")
 
             if resources_regex is not None:
                 f.write("\n## Downloaded Resources\n\n")
@@ -673,6 +832,7 @@ def main():
         "context":    str(md_path),
         "html":       str(html_path),
         "screenshot": str(full_screenshot),
+        "chrome_profile_source": str(chrome_source_dir) if chrome_source_dir is not None else "",
     }
 
     if clean_result is not None:
@@ -685,6 +845,14 @@ def main():
         result["script"] = {
             "file": str(js_file_path),
             "result": script_result,
+        }
+
+    if chrome_source_dir is not None and chrome_copy_dir is not None:
+        result["chrome_profile"] = {
+            "source": str(chrome_source_dir),
+            "temp_copy": str(chrome_copy_dir),
+            "used": chrome_profile_used,
+            "cleaned": chrome_copy_cleaned,
         }
 
     created_files: list[pathlib.Path] = [full_screenshot, md_path, html_path]

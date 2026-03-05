@@ -9,11 +9,11 @@
 
 Runs a real Chromium browser (via Playwright), navigates to a URL, takes a
 full-page screenshot and grabs the live DOM, then writes everything into
-`<output_dir>/context.md`.
+`<output_dir>/p2cxt_context.md` and `<output_dir>/p2cxt_html.html`.
 
-- **No crop** → one `screenshot.png` + DOM in `context.md`
-- **With `--crop`** → individual tile PNGs (`tile_1.png`, `tile_27.png`, …) each
-  in their own numbered section inside `context.md`
+- **No crop** → one `p2cxt_screenshot.png` + raw DOM in `p2cxt_html.html`
+- **With `--crop`** → individual tile PNGs (`p2cxt_tile_1.png`, `p2cxt_tile_27.png`, …)
+  in numbered sections inside `p2cxt_context.md`
 
 Use this whenever you need to:
 - Understand the CSS or layout of a page you can't see
@@ -59,7 +59,7 @@ Format: `COLSxROWS:TILE[,TILE,...]`
 
 Divides the full-page screenshot into a COLS×ROWS grid.
 Tiles are numbered **left-to-right, top-to-bottom** starting at 1.
-Each selected tile is saved as a **separate PNG** (`tile_N.png`).
+Each selected tile is saved as a **separate PNG** (`p2cxt_tile_N.png`).
 
 ```
 3x9 grid — --crop "3x9:1,27"
@@ -73,13 +73,15 @@ Each selected tile is saved as a **separate PNG** (`tile_N.png`).
 |25 |26 |27 |  row 9   ← tile 27 selected
 +---+---+---+
 
-Output files: tile_1.png, tile_27.png
-context.md:
+Output files: p2cxt_tile_1.png, p2cxt_tile_27.png
+p2cxt_context.md:
   ## Screenshots
   ### Screenshot 1 (tile 1)
-  ![tile 1](tile_1.png)
+  ![tile 1](p2cxt_tile_1.png)
   ### Screenshot 2 (tile 27)
-  ![tile 27](tile_27.png)
+  ![tile 27](p2cxt_tile_27.png)
+  ## DOM
+  See [p2cxt_html.html](p2cxt_html.html) for the full DOM HTML.
 ```
 
 ---
@@ -96,12 +98,13 @@ context.md:
   "url":        "https://example.com",
   "viewport":   "1280x720",
   "output_dir": "page2context",
-  "context":    "page2context/context.md",
-  "screenshot": "page2context/screenshot.png",
+  "context":    "page2context/p2cxt_context.md",
+  "html":       "page2context/p2cxt_html.html",
+  "screenshot": "page2context/p2cxt_screenshot.png",
   "crop": {
     "grid":  "3x9",
     "tiles": [1, 27],
-    "files": ["page2context/tile_1.png", "page2context/tile_27.png"]
+    "files": ["page2context/p2cxt_tile_1.png", "page2context/p2cxt_tile_27.png"]
   }
 }
 ```
@@ -138,8 +141,9 @@ context.md:
 ```
 1. Call page2context --json
 2. Check status == "success", else report reason to user and stop
-3. Read <output_dir>/context.md — contains screenshots + full DOM
-4. Use screenshot images and DOM to answer user's question
+3. Read <output_dir>/p2cxt_context.md — contains screenshots + structure
+4. Read <output_dir>/p2cxt_html.html — contains full DOM HTML
+5. Use both files to answer the user's question
 ```
 
 ---

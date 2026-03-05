@@ -1,5 +1,5 @@
 """
-page2context — Capture a webpage (screenshot + DOM) into a Markdown file
+page2context — Capture a webpage (screenshot + DOM) into Markdown outputs
 for use as AI context (GitHub Copilot, Cursor, etc.).
 Default output is human-readable. --json gives machine-readable JSON.
 Exit codes follow UNIX conventions.
@@ -75,7 +75,7 @@ def _error_exit(code: int, message: str, **extra) -> None:
 # ---------------------------------------------------------------------------
 SYNTAX_HELP = textwrap.dedent("""\
     page2context v{version}
-    Capture a webpage (screenshot + DOM) into a Markdown file for AI context.
+    Capture a webpage (screenshot + DOM) into Markdown outputs for AI context.
     Usage:
       python page2context.py --url "<URL>" [OPTIONS]
     Required:
@@ -120,7 +120,7 @@ def parse_args():
     _json_mode = "--json" in sys.argv
     parser = _TextArgumentParser(
         prog="page2context",
-        description="Capture a webpage screenshot and DOM HTML into a Markdown file.",
+        description="Capture a webpage screenshot and DOM HTML into Markdown outputs.",
         add_help=True,
     )
     parser.add_argument("--url",    required=True,          help="URL to capture")
@@ -175,7 +175,7 @@ def _cleanup_prefixed_files(output_dir: pathlib.Path) -> None:
 
 
 def extract_tiles(
-    full_screenshot: str,
+    full_screenshot: pathlib.Path | str,
     output_dir: pathlib.Path,
     cols: int,
     rows: int,
@@ -256,11 +256,15 @@ def main():
             _error_exit(EXIT_IO_ERR, f"Crop failed: {exc}", screenshot=str(full_screenshot))
     # -- Write Markdown ------------------------------------------------------
     md_path = output_dir / f"{OUTPUT_PREFIX}context.md"
+    html_path = output_dir / f"{OUTPUT_PREFIX}html.html"
     try:
+        with open(html_path, "w", encoding="utf-8") as f:
+            f.write(html)
+
         with open(md_path, "w", encoding="utf-8") as f:
             f.write(f"# Page context: {args.url}\n\n")
             if tile_paths:
-                # Multiple cropped tiles → numbered Screenshots section
+                # Multiple cropped tiles -> numbered Screenshots section
                 cols, rows, tiles = crop_parsed
                 f.write("## Screenshots\n\n")
                 f.write(f"> Grid: {cols}x{rows} | captured tiles: {', '.join(str(t) for t in tiles)}\n\n")
@@ -268,13 +272,11 @@ def main():
                     f.write(f"### Screenshot {i} (tile {tile_idx})\n\n")
                     f.write(f"![tile {tile_idx}]({tile_path.name})\n\n")
             else:
-                # No crop → single full-page screenshot
+                # No crop -> single full-page screenshot
                 f.write("## Screenshot\n\n")
                 f.write(f"![{args.url}]({full_screenshot.name})\n\n")
             f.write("## DOM\n\n")
-            f.write("```html\n")
-            f.write(html)
-            f.write("\n```\n")
+            f.write(f"See [{html_path.name}]({html_path.name}) for the full DOM HTML.\n")
     except OSError as exc:
         _error_exit(EXIT_IO_ERR, f"Cannot write output file: {exc}", path=str(md_path))
     # -- Success output: emit created artifacts -----------------------------
@@ -284,10 +286,11 @@ def main():
         "viewport":   f"{viewport_w}x{viewport_h}",
         "output_dir": str(output_dir),
         "context":    str(md_path),
+        "html":       str(html_path),
         "screenshot": str(full_screenshot),
     }
 
-    created_files: list[pathlib.Path] = [full_screenshot, md_path]
+    created_files: list[pathlib.Path] = [full_screenshot, md_path, html_path]
     if tile_paths:
         created_files.extend(tile_paths)
 

@@ -5,8 +5,8 @@ description: Capture any webpage (screenshot + live DOM HTML) into a Markdown fi
 
 # page2context
 
-Capture a webpage (full-page screenshot + live DOM HTML) into a `context.md` file
-that you can read to understand the page's visual layout and CSS.
+Capture a webpage (full-page screenshot + live DOM HTML) into `p2cxt_context.md`
+plus a separate fixed DOM file `p2cxt_html.html`.
 
 ## When to use
 
@@ -54,18 +54,19 @@ left-to-right, top-to-bottom from 1. Each tile is saved as a separate PNG.
   "url":        "https://example.com",
   "viewport":   "1280x720",
   "output_dir": "page2context",
-  "context":    "page2context/context.md",
-  "screenshot": "page2context/screenshot.png",
+  "context":    "page2context/p2cxt_context.md",
+  "html":       "page2context/p2cxt_html.html",
+  "screenshot": "page2context/p2cxt_screenshot.png",
   "crop": {
     "grid":  "3x9",
     "tiles": [1, 27],
-    "files": ["page2context/tile_1.png", "page2context/tile_27.png"]
+    "files": ["page2context/p2cxt_tile_1.png", "page2context/p2cxt_tile_27.png"]
   }
 }
 ```
 
 > `crop` is only present when `--crop` was used.
-> Without crop, `screenshot.png` is the full-page image.
+> Without crop, `p2cxt_screenshot.png` is the full-page image.
 
 ## Output on error
 
@@ -94,8 +95,9 @@ left-to-right, top-to-bottom from 1. Each tile is saved as a separate PNG.
 ```
 1. Run page2context with --json
 2. Parse output_dir from JSON
-3. Read <output_dir>/context.md — it contains screenshot(s) + full DOM HTML
-4. Use that context to answer the user's question about layout / CSS / structure
+3. Read <output_dir>/p2cxt_context.md for screenshots and structure
+4. Read <output_dir>/p2cxt_html.html for full DOM HTML
+5. Use both files to answer layout / CSS / structure questions
 ```
 
 ## Installation
@@ -111,4 +113,3 @@ Or:
 ```bash
 make setup
 ```
-

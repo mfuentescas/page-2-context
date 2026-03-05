@@ -1,6 +1,6 @@
 # page2context
 
-> Capture any webpage (screenshot + live DOM HTML) into a single Markdown file —
+> Capture any webpage (screenshot + live DOM HTML) into linked Markdown outputs —
 > perfect for feeding visual context to GitHub Copilot, Cursor, or any AI assistant.
 
 ---
@@ -9,16 +9,17 @@
 
 When you ask an AI to help with CSS, layout or UI code, it can't *see* your browser.
 **page2context** fixes that: it opens the page in a real Chromium browser (via Playwright),
-takes a full-page screenshot, grabs the live DOM, and writes everything into
-`<output_dir>/context.md` — ready to drop into any AI chat.
+takes a full-page screenshot, grabs the live DOM, and writes output files into
+`<output_dir>/p2cxt_context.md` (screenshots + reference) and `<output_dir>/p2cxt_html.html` (raw DOM HTML) — ready to drop into any AI chat.
 
 ```
 +----------------------+    page2context    +--------------------------+
 |  Any URL / localhost | ────────────────►  |  page2context/           |
-|  (real Chromium)     |                    |  ├── context.md          |
-+----------------------+                    |  ├── screenshot.png      |
-                                            |  └── tile_1.png  (opt.) |
-                                            +--------------------------+
+|  (real Chromium)     |                    |  ├── p2cxt_context.md    |
+|                      |                    |  ├── p2cxt_html.html     |
+|                      |                    |  ├── p2cxt_screenshot.png |
+|                      |                    |  └── p2cxt_tile_1.png (opt.) |
++----------------------+                    +--------------------------+
                                                        │
                                                        ▼
                                           GitHub Copilot / Cursor / ...
@@ -100,16 +101,16 @@ window or you only care about a specific region.
 3x9 grid — --crop "3x9:1,27"
 
 +---+---+---+
-| 1 | 2 | 3 |  row 1   ← tile 1 captured → tile_1.png
+| 1 | 2 | 3 |  row 1   ← tile 1 captured → p2cxt_tile_1.png
 +---+---+---+
 | 4 | 5 | 6 |  row 2
     ...
 +---+---+---+
-|25 |26 |27 |  row 9   ← tile 27 captured → tile_27.png
+|25 |26 |27 |  row 9   ← tile 27 captured → p2cxt_tile_27.png
 +---+---+---+
 ```
 
-Each tile becomes its own PNG file and its own numbered section in `context.md`.
+Each tile becomes its own PNG file and its own numbered section in `p2cxt_context.md`.
 
 ---
 
@@ -119,33 +120,34 @@ Each tile becomes its own PNG file and its own numbered section in `context.md`.
 
 ```
 page2context/
-├── context.md      ← markdown with screenshot + full DOM
-└── screenshot.png  ← full-page screenshot
+├── p2cxt_context.md      ← markdown with screenshot + reference to DOM file
+├── p2cxt_html.html       ← full downloaded DOM HTML
+└── p2cxt_screenshot.png  ← full-page screenshot
 ```
 
-`context.md` structure:
+`p2cxt_context.md` structure:
 ```markdown
 # Page context: https://example.com
 
 ## Screenshot
-![...](screenshot.png)
+![...](p2cxt_screenshot.png)
 
 ## DOM
-```html
-...
+See [p2cxt_html.html](p2cxt_html.html) for the full DOM HTML.
 ```
 
 ### With `--crop "3x9:1,27"`
 
 ```
 page2context/
-├── context.md      ← markdown with tile sections + full DOM
-├── screenshot.png  ← full-page screenshot (kept for reference)
-├── tile_1.png
-└── tile_27.png
+├── p2cxt_context.md      ← markdown with tile sections + DOM reference
+├── p2cxt_html.html       ← full downloaded DOM HTML in a separate file
+├── p2cxt_screenshot.png  ← full-page screenshot (kept for reference)
+├── p2cxt_tile_1.png
+└── p2cxt_tile_27.png
 ```
 
-`context.md` structure:
+`p2cxt_context.md` structure:
 ```markdown
 # Page context: https://example.com
 
@@ -153,14 +155,13 @@ page2context/
 > Grid: 3x9 | captured tiles: 1, 27
 
 ### Screenshot 1 (tile 1)
-![tile 1](tile_1.png)
+![tile 1](p2cxt_tile_1.png)
 
 ### Screenshot 2 (tile 27)
-![tile 27](tile_27.png)
+![tile 27](p2cxt_tile_27.png)
 
 ## DOM
-```html
-...
+See [p2cxt_html.html](p2cxt_html.html) for the full DOM HTML.
 ```
 
 ---
@@ -188,12 +189,13 @@ ERROR (3): Could not load URL: https://bad-url.invalid
   "url":        "https://example.com",
   "viewport":   "1280x720",
   "output_dir": "page2context",
-  "context":    "page2context/context.md",
-  "screenshot": "page2context/screenshot.png",
+  "context":    "page2context/p2cxt_context.md",
+  "html":       "page2context/p2cxt_html.html",
+  "screenshot": "page2context/p2cxt_screenshot.png",
   "crop": {
     "grid":  "3x9",
     "tiles": [1, 27],
-    "files": ["page2context/tile_1.png", "page2context/tile_27.png"]
+    "files": ["page2context/p2cxt_tile_1.png", "page2context/p2cxt_tile_27.png"]
   }
 }
 ```
@@ -214,9 +216,9 @@ ERROR (3): Could not load URL: https://bad-url.invalid
 ## Using with GitHub Copilot / Cursor
 
 1. Run `page2context.py` against your target page
-2. Open `page2context/context.md` in your IDE
+2. Open `page2context/p2cxt_context.md` in your IDE
 3. Reference it in Copilot Chat:
-   - Drag the file into chat, or type `#file:page2context/context.md`
+   - Drag the file into chat, or type `#file:page2context/p2cxt_context.md`
 4. Ask things like:
    - *"Based on the screenshot and DOM, fix the navbar alignment."*
    - *"What CSS class controls the hero section padding?"*

@@ -1,6 +1,6 @@
 ---
 name: page-2-context
-description: Capture any webpage into screenshot + live DOM artifacts (p2cxt_*) for CSS/layout debugging, localhost review, and visual regression. Supports logged-in sessions via safe browser-profile temp copies.
+description: Screenshot + live DOM capture (p2cxt_*) for CSS/layout debugging and visual regression. Includes safe browser-profile temp copies for logged-in sessions.
 ---
 
 # page2context
@@ -19,6 +19,29 @@ Capture a webpage into AI-readable artifacts:
 ## When to use
 
 Use this skill if you need **visual context + DOM** (not just HTML source) and want **machine-readable output**.
+
+## Setup (important)
+
+If this skill is used from another project (via `npx skills`), Python/Playwright dependencies may not be installed yet.
+
+**Preferred setup (do this): run the Makefile from this repo root. Do not invent extra pip packages.**
+
+```bash
+make setup
+```
+
+Optional interactive installs (default: Yes):
+
+```bash
+make setup-browsers
+```
+
+Fallback if `make` is not available:
+
+```bash
+python3 -m pip install -r requirements.txt
+python3 -m playwright install chromium
+```
 
 ## Safety (browser profiles)
 
@@ -63,9 +86,10 @@ python page2context.py --url "<URL>" --post-load-wait-ms 1200 --run-js-file "./t
 
 ## Agent workflow (deterministic)
 
-1. Run with `--json`.
-2. If `status != "success"`, report `message/reason/exit_code` and stop.
-3. Read `p2cxt_context.md` → then `p2cxt_html.html` → then `p2cxt_console.log` (if present).
+1. If dependencies are missing, run `make setup` in this repo first.
+2. Run with `--json`.
+3. If `status != "success"`, report `message/reason/exit_code` and stop.
+4. Read `p2cxt_context.md` → then `p2cxt_html.html` → then `p2cxt_console.log` (if present).
 
 ## Common failure hint
 

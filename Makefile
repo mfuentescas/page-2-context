@@ -1,7 +1,9 @@
-.PHONY: setup setup-deps setup-chromium setup-firefox setup-edge setup-brave setup-webkit setup-browsers version test run run-crop
+.PHONY: setup setup-deps setup-chromium setup-firefox setup-edge setup-brave setup-webkit setup-browsers sync-agent-skills version test run run-crop
+
+AGENT_SKILL := agent-skill.md
 
 # Install Python deps + Chromium (minimum required to run the tool)
-setup: setup-deps setup-chromium
+setup: setup-deps setup-chromium sync-agent-skills
 	@echo ""
 	@echo "Core setup complete (Chromium ready)."
 	@echo "To install additional browsers interactively, run:  make setup-browsers"
@@ -43,6 +45,23 @@ setup-browsers:
 	_ask "Edge"      && python3 -m playwright install msedge    || echo "  Skipping Edge."; \
 	echo ""; \
 	echo "Done. Brave and Chromium share the same engine (already installed via setup-chromium)."
+
+# Sync agent-skill.md into each AI system's conventional directory
+sync-agent-skills: $(AGENT_SKILL)
+	@mkdir -p .github .cursor/rules .windsurf/rules
+	@for target in \
+	  .github/copilot-instructions.md \
+	  .cursor/rules/page2context.md \
+	  CLAUDE.md \
+	  .windsurf/rules/page2context.md \
+	  .clinerules ; do \
+	  printf '%s\n%s\n\n' \
+	    "<!-- AUTO-GENERATED from $(AGENT_SKILL) — do not edit directly. -->" \
+	    "<!-- Run: make sync-agent-skills -->" \
+	    > "$$target" ; \
+	  cat $(AGENT_SKILL) >> "$$target" ; \
+	done
+	@echo "✔ Agent skill files synced to: .github/ .cursor/ .windsurf/ CLAUDE.md .clinerules"
 
 version:
 	@cat VERSION

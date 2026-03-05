@@ -617,9 +617,10 @@ def _browser_install_hint(exc: "PlaywrightError", browser_key: str) -> str | Non
             "safari": "setup-webkit", "webkit": "setup-webkit",
         }
         make_target = make_target_map.get(browser_key, f"setup-{pw_engine}")
+        py = sys.executable
         return (
             f"Browser '{browser_key}' is not installed for Playwright. "
-            f"Run:  python3 -m playwright install {pw_engine}  "
+            f"Run:  {py} -m playwright install {pw_engine}  "
             f"(or:  make {make_target})"
         )
     return None
@@ -690,7 +691,7 @@ def main() -> None:
                     hint = _browser_install_hint(exc, selected_profile_key or selected_browser_type)
                     if hint:
                         _error_exit(EXIT_NAVIGATION_ERR, hint,
-                                    fix=f"python3 -m playwright install {selected_browser_type}")
+                                    fix=f"{sys.executable} -m playwright install {selected_browser_type}")
                     if args.console_log:
                         _log_console(f"[profile:fallback] {exc}")
                     try:
@@ -701,7 +702,7 @@ def main() -> None:
                         hint2 = _browser_install_hint(exc2, selected_profile_key or selected_browser_type)
                         if hint2:
                             _error_exit(EXIT_NAVIGATION_ERR, hint2,
-                                        fix=f"python3 -m playwright install {selected_browser_type}")
+                                        fix=f"{sys.executable} -m playwright install {selected_browser_type}")
                         raise
             else:
                 try:
@@ -712,7 +713,7 @@ def main() -> None:
                     hint = _browser_install_hint(exc, selected_profile_key or selected_browser_type)
                     if hint:
                         _error_exit(EXIT_NAVIGATION_ERR, hint,
-                                    fix=f"python3 -m playwright install {selected_browser_type}")
+                                    fix=f"{sys.executable} -m playwright install {selected_browser_type}")
                     raise
             if args.console_log:
                 page.on("console",       lambda msg: _log_console(f"[console:{msg.type}] {msg.text}"))
@@ -756,7 +757,7 @@ def main() -> None:
         hint = _browser_install_hint(exc, selected_profile_key or selected_browser_type)
         if hint:
             _error_exit(EXIT_NAVIGATION_ERR, hint,
-                        fix=f"python3 -m playwright install {selected_browser_type}")
+                        fix=f"{sys.executable} -m playwright install {selected_browser_type}")
         if   "ERR_NAME_NOT_RESOLVED"     in raw: reason = "DNS resolution failed - host not found."
         elif "ERR_CONNECTION_REFUSED"    in raw: reason = "Connection refused - nothing listening at that address."
         elif "ERR_CONNECTION_TIMED_OUT"  in raw or "Timeout" in raw: reason = "Connection timed out."

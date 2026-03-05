@@ -529,28 +529,49 @@ the browser; only a temporary copy is used and it is deleted on exit.
 This project ships two skill descriptor files so any AI assistant can learn
 to use `page2context` automatically:
 
-| File | Purpose | How to use |
-|------|---------|------------|
-| **[SKILL.md](SKILL.md)** | [skills.sh](https://skills.sh) format — for GitHub Copilot, Cursor, Claude Code and other agents that auto-discover `SKILL.md` files in the workspace. | Just place this repo in your project — the AI will find `SKILL.md` automatically. |
-| **[agent-skill.md](agent-skill.md)** | Generic AI agent instructions — full call spec, JSON schema, exit codes, and a suggested workflow. | Copy `agent-skill.md` into any AI system prompt, custom GPT instructions, or MCP config where the agent can invoke CLI tools. |
+| File | Purpose |
+|------|---------|
+| **[SKILL.md](SKILL.md)** | [skills.sh](https://skills.sh) format — auto-discovered by agents that scan the workspace for `SKILL.md` (GitHub Copilot, Cursor, Claude Code, etc.). |
+| **[agent-skill.md](agent-skill.md)** | Source of truth for the full agent instructions — call spec, JSON schema, exit codes, and suggested workflow. |
 
-Both files document the same tool; `SKILL.md` uses the skills.sh front-matter
-convention while `agent-skill.md` is a standalone reference suitable for any
-AI system.
+### Auto-discovery copies
+
+Each AI system looks for instructions in its own conventional directory.
+Running `make sync-agent-skills` (also runs during `make setup`) copies
+`agent-skill.md` into every one of them:
+
+| AI system | Generated file |
+|-----------|----------------|
+| **GitHub Copilot** | `.github/copilot-instructions.md` |
+| **Cursor** | `.cursor/rules/page2context.md` |
+| **Claude Code** | `CLAUDE.md` |
+| **Windsurf (Codeium)** | `.windsurf/rules/page2context.md` |
+| **Cline** | `.clinerules` |
+
+All generated files include a header comment pointing back to `agent-skill.md`.
+Edit **only** `agent-skill.md`, then run:
+
+```bash
+make sync-agent-skills
+```
+
+> If you don't use a particular AI system, its generated file is harmless —
+> it is just a Markdown file that other tools will ignore.
 
 ---
 
 ## Makefile shortcuts
 
 ```bash
-make setup            # Install Python deps + Chromium (minimum to run)
-make setup-browsers   # Interactive: Y/n prompt for each additional browser
-make setup-firefox    # Install Firefox for Playwright
-make setup-edge       # Install Microsoft Edge for Playwright
-make setup-webkit     # Install WebKit for Playwright
-make setup-brave      # Install Brave (uses Chromium engine)
-make test             # Run smoke test suite
-make version          # Print current version
-make run              # Quick capture of http://github.com/
-make run-crop         # Capture http://github.com/ with 1920x1080 + 3x9 crop
+make setup              # Install Python deps + Chromium + sync agent skills
+make setup-browsers     # Interactive: Y/n prompt for each additional browser
+make setup-firefox      # Install Firefox for Playwright
+make setup-edge         # Install Microsoft Edge for Playwright
+make setup-webkit       # Install WebKit for Playwright
+make setup-brave        # Install Brave (uses Chromium engine)
+make sync-agent-skills  # Copy agent-skill.md → .github/, .cursor/, .windsurf/, CLAUDE.md, .clinerules
+make test               # Run smoke test suite
+make version            # Print current version
+make run                # Quick capture of http://github.com/
+make run-crop           # Capture http://github.com/ with 1920x1080 + 3x9 crop
 ```

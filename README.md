@@ -67,13 +67,13 @@ Running with no arguments prints full usage help.
 | `--size <WxH>` | ❌ | `1280x720` | Viewport size, e.g. `1920x1080` |
 | `--crop <spec>` | ❌ | *(none)* | Grid crop — see below |
 | `--console-log` | ❌ | *(flag)* | Capture browser console/page/navigation errors into `p2cxt_console.log` |
-| `--chrome-profile-dir [dir]` | ❌ | *(none)* | Chrome user profile dir to copy into an ephemeral run profile; pass empty (`""`) to auto-detect |
-| `--edge-profile-dir [dir]` | ❌ | *(none)* | Same as above but for Microsoft Edge |
-| `--brave-profile-dir [dir]` | ❌ | *(none)* | Same as above but for Brave |
-| `--firefox-profile-dir [dir]` | ❌ | *(none)* | Firefox user profile dir; pass empty to auto-detect |
-| `--safari-profile-dir [dir]` | ❌ | *(none)* | Safari profile dir (macOS only); pass empty to auto-detect |
-| `--chromium-profile-dir [dir]` | ❌ | *(none)* | Chromium user profile dir; pass empty to auto-detect |
-| `--webkit-profile-dir [dir]` | ❌ | *(none)* | Playwright WebKit profile dir; pass empty to auto-detect |
+| `--chrome-profile-dir [dir]` | ❌ | *(none)* | Copy Chrome user profile into a temporary directory used for this run only, then delete it. Useful to capture pages that require an active logged-in session (cookies, local storage). **Original profile is never modified.** Pass empty (`""`) to auto-detect. |
+| `--edge-profile-dir [dir]` | ❌ | *(none)* | Same as above but for Microsoft Edge. **Original profile is never modified.** |
+| `--brave-profile-dir [dir]` | ❌ | *(none)* | Same as above but for Brave. **Original profile is never modified.** |
+| `--firefox-profile-dir [dir]` | ❌ | *(none)* | Same as above but for Firefox. Pass the profile root or a specific profile folder; pass empty to auto-detect. **Original profile is never modified.** |
+| `--safari-profile-dir [dir]` | ❌ | *(none)* | Same as above but for Safari (macOS only). **Original profile is never modified.** |
+| `--chromium-profile-dir [dir]` | ❌ | *(none)* | Same as above but for Chromium. **Original profile is never modified.** |
+| `--webkit-profile-dir [dir]` | ❌ | *(none)* | Same as above but for Playwright WebKit. **Original profile is never modified.** |
 | | | | ⚠️ Only **one** browser profile flag can be used per run |
 | `--run-js-file <path>` | ❌ | *(none)* | Execute a JS file inside the opened page and wait for completion |
 | `--post-load-wait-ms <ms>` | ❌ | `0` | Extra wait after page load and before `--run-js-file`/screenshot (useful for animations) |
@@ -271,9 +271,30 @@ See [p2cxt_console.log](p2cxt_console.log) for captured console output and brows
 
 ### With `--chrome-profile-dir "~/.config/google-chrome"` / `--firefox-profile-dir <dir>` / etc.
 
-The tool creates a temporary copy of the provided directory, uses that copy
-for the browser session, and removes it when the script finishes.
-Only one browser profile flag can be used per run; passing two returns exit code 2.
+#### Why use a browser profile?
+
+When a web page requires authentication — for example an internal dashboard,
+a SaaS app or any page where you are already logged in in your real browser —
+passing your browser profile lets `page2context` open that page in an already
+authenticated session. The browser will find your existing cookies and local
+storage, so the page loads exactly as it would for you, including protected
+content.
+
+#### Safety guarantees — your original profile is never at risk
+
+`page2context` **never opens your real profile directory**. Instead it:
+
+1. **Copies** the profile directory to a fresh temporary folder under `/tmp`
+   (e.g. `/tmp/p2cxt_chrome_copy_xxx/`).
+2. **Runs the browser** pointing exclusively at that temporary copy.
+3. **Deletes the entire temporary copy** when the script finishes (whether it
+   succeeded or failed).
+
+Your real browser and its profile are untouched at all times. You can keep
+your browser open and running while `page2context` captures a page — there is
+no conflict because the tool uses an independent, isolated copy.
+
+Only one browser profile flag can be used per run; passing two flags returns exit code 2.
 
 `p2cxt_context.md` adds:
 
@@ -290,8 +311,10 @@ Only one browser profile flag can be used per run; passing two returns exit code
 ### With `--chrome-profile-dir ""`
 
 When passed empty, the tool tries to auto-detect the first Chrome/Chromium
-user-data directory from common OS paths (Linux/macOS/Windows). If none is
-found, it exits with an error asking you to pass `--chrome-profile-dir <DIR>`.
+user-data directory from common OS paths (Linux/macOS/Windows). The same
+applies to `--firefox-profile-dir ""`, `--edge-profile-dir ""`, etc.
+If no profile is found, it exits with exit code 4 and a message asking you
+to pass the directory explicitly.
 
 ---
 

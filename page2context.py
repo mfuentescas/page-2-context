@@ -596,6 +596,9 @@ def main() -> None:
             browser = None
             if profile_copy_dir is not None:
                 try:
+                    # Safety: always use the temp COPY (profile_copy_dir), never the original source.
+                    # The source profile directory is read-only from our perspective — shutil.copytree
+                    # only reads it; the browser never touches it.
                     context = browser_type.launch_persistent_context(
                         user_data_dir=str(profile_copy_dir), headless=True)
                     page = context.pages[0] if context.pages else context.new_page()
@@ -656,6 +659,8 @@ def main() -> None:
         else: reason = raw.splitlines()[0]
         _error_exit(EXIT_NAVIGATION_ERR, f"Could not load URL: {args.url}", reason=reason, url=args.url)
     finally:
+        # Safety: always delete the temp profile copy — success, error, or exception.
+        # The original source profile is never modified and remains untouched.
         profile_copy_cleaned = _cleanup_temp_copy(profile_copy_root)
         if profile_copy_root is not None and not profile_copy_cleaned:
             _error_exit(EXIT_IO_ERR, "Cannot remove browser profile temp copy after run.",

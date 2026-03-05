@@ -34,13 +34,13 @@ python page2context.py [--clean-temp] [--url "<URL>"] [--size <WxH>] [--crop <CO
 | `--crop` | ❌ | *(none)* | Capture only specific grid tiles — see below |
 | `--clean-temp` | ❌ | *(flag)* | Clean historical `p2cxt_*` artifacts from the history cache |
 | `--console-log` | ❌ | *(flag)* | Save console/page/navigation errors to `p2cxt_console.log` |
-| `--chrome-profile-dir` | ❌ | *(none)* | Copy this Chrome user-data dir to ephemeral run profile and delete copy at end. Pass empty (`""`) to auto-detect. |
-| `--edge-profile-dir` | ❌ | *(none)* | Same as above but for Microsoft Edge. |
-| `--brave-profile-dir` | ❌ | *(none)* | Same as above but for Brave. |
-| `--firefox-profile-dir` | ❌ | *(none)* | Firefox profile folder. Empty auto-detects. |
-| `--safari-profile-dir` | ❌ | *(none)* | Safari profile folder (macOS). Empty auto-detects. |
-| `--chromium-profile-dir` | ❌ | *(none)* | Chromium profile folder. Empty auto-detects. |
-| `--webkit-profile-dir` | ❌ | *(none)* | Playwright WebKit profile folder. Empty auto-detects. |
+| `--chrome-profile-dir` | ❌ | *(none)* | Copy Chrome user-data dir to a temp folder, use that copy for this run, then delete it. Useful to capture pages that require an active logged-in session. **Original profile is never modified.** Pass empty (`""`) to auto-detect. |
+| `--edge-profile-dir` | ❌ | *(none)* | Same as above but for Microsoft Edge. **Original profile is never modified.** |
+| `--brave-profile-dir` | ❌ | *(none)* | Same as above but for Brave. **Original profile is never modified.** |
+| `--firefox-profile-dir` | ❌ | *(none)* | Same as above but for Firefox. Pass root dir or specific profile folder; empty auto-detects. **Original profile is never modified.** |
+| `--safari-profile-dir` | ❌ | *(none)* | Same as above but for Safari (macOS only). **Original profile is never modified.** |
+| `--chromium-profile-dir` | ❌ | *(none)* | Same as above but for Chromium. **Original profile is never modified.** |
+| `--webkit-profile-dir` | ❌ | *(none)* | Same as above but for Playwright WebKit. **Original profile is never modified.** |
 | | | | ⚠️ Only **one** browser profile flag per run |
 | `--run-js-file` | ❌ | *(none)* | Execute JS file in page and wait for completion |
 | `--post-load-wait-ms` | ❌ | `0` | Extra wait in milliseconds after page load and before `--run-js-file`/screenshot |
@@ -148,10 +148,15 @@ History cache location:
 > `chrome_profile_source` is always present — populated for `--chrome-profile-dir` only; `""` otherwise.
 > `browser_profile` is present when any `--*-profile-dir` flag is used; `browser` field names the browser used.
 > `chrome_profile` is also present (backward compat) when `--chrome-profile-dir` is used.
-> `console_log` is only present when `--console-log` is used.
 > `cleanup_before_run` is only present when `--clean-temp` is combined with capture.
 > `history_file` is always present.
 > `output`/`files` always contain absolute paths to created artifacts.
+>
+> **Browser profile safety**: all `--*-profile-dir` flags work by copying the user profile to a
+> temporary directory. The browser runs against that copy exclusively. The original profile is
+> **never opened or modified**. The temporary copy is deleted when the script exits (success or
+> error). It is safe to run while the real browser is open. The main purpose is to access pages
+> that require an already-authenticated session (cookies and local storage from the real browser).
 
 Clean-only success (`--clean-temp` without `--url`):
 

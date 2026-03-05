@@ -496,7 +496,7 @@ assert_eq "chrome_profile cleaned=true" "$(json_nested_field "$OUT" "chrome_prof
 TEMP_COPY_PATH="$(json_nested_field "$OUT" "chrome_profile" "temp_copy")"
 [[ "$TEMP_COPY_PATH" == /* ]] && ok "chrome temp copy path is absolute" || fail "chrome temp copy path is not absolute"
 [[ ! -e "$TEMP_COPY_PATH" ]] && ok "chrome temp copy removed after run" || fail "chrome temp copy still exists after run"
-grep -q "Chrome Profile Copy" "${OUT_DIR_CHROME_TMP}/p2cxt_context.md" && ok "context includes chrome profile copy section" || fail "context missing chrome profile copy section"
+grep -q "Browser Profile Copy" "${OUT_DIR_CHROME_TMP}/p2cxt_context.md" && ok "context includes Browser Profile Copy section" || fail "context missing Browser Profile Copy section"
 
 info "Test 14: chrome-profile-dir empty auto-discovers first default profile"
 OUT_DIR_CHROME_AUTO="${TMP_DIR}/run_chrome_auto"
@@ -565,15 +565,15 @@ mkdir -p "${FF_SRC}"
 printf '[General]\nStartWithLastProfile=1\n\n[Profile0]\nName=default-release\nIsRelative=1\nPath=default-release\nDefault=1\n' > "${FF_SRC}/profiles.ini"
 mkdir -p "${FF_SRC}/default-release"
 printf 'user_pref("toolkit.telemetry.reportingpolicy.firstRun", false);\n' > "${FF_SRC}/default-release/prefs.js"
-FF_SRC_ABS="$(cd "${FF_SRC}" && pwd)"
-FF_PROFILE_ABS="$(cd "${FF_SRC}/default-release" && pwd)"
+FF_PROFILE_ABS="$(cd "${FF_SRC}/default-release" && pwd)"  # actual resolved profile subdir
 
 run_and_capture OUT EC "${SCRIPT[@]}" --url "${TEST_URL}" --output "${OUT_DIR_FF}" --firefox-profile-dir "${FF_SRC}" --json
 assert_eq "firefox-profile-dir exit code is 0" "$EC" "0"
 assert_eq "firefox-profile-dir status=success" "$(json_field "$OUT" "status")" "success"
 assert_eq "browser_profile key present" "$(json_has_key "$OUT" "browser_profile")" "True"
 assert_eq "browser_profile.browser=firefox" "$(json_nested_field "$OUT" "browser_profile" "browser")" "firefox"
-assert_eq "browser_profile.source matches" "$(json_nested_field "$OUT" "browser_profile" "source")" "${FF_SRC_ABS}"
+# _resolve_profile parses profiles.ini and returns the resolved profile subdir (default-release), not the root
+assert_eq "browser_profile.source matches resolved profile subdir" "$(json_nested_field "$OUT" "browser_profile" "source")" "${FF_PROFILE_ABS}"
 assert_eq "browser_profile.cleaned=True" "$(json_nested_field "$OUT" "browser_profile" "cleaned")" "True"
 FF_TEMP_COPY="$(json_nested_field "$OUT" "browser_profile" "temp_copy")"
 [[ "$FF_TEMP_COPY" == /* ]] && ok "firefox temp copy path is absolute" || fail "firefox temp copy path not absolute"

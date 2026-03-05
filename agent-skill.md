@@ -60,13 +60,13 @@ python page2context.py \
 | `--crop` | ❌ | *(none)* | Grid crop spec — see below |
 | `--clean-temp` | ❌ | *(flag)* | Clean historical `p2cxt_*` artifacts from tracked cache |
 | `--console-log` | ❌ | *(flag)* | Save console/page/navigation errors into `p2cxt_console.log` |
-| `--chrome-profile-dir` | ❌ | *(none)* | Copy Chrome user-data dir to ephemeral run profile and delete copy at end. Pass empty (`""`) to auto-detect. |
-| `--edge-profile-dir` | ❌ | *(none)* | Same as above but for Microsoft Edge. |
-| `--brave-profile-dir` | ❌ | *(none)* | Same as above but for Brave. |
-| `--firefox-profile-dir` | ❌ | *(none)* | Firefox profile folder. Empty auto-detects. |
-| `--safari-profile-dir` | ❌ | *(none)* | Safari profile folder (macOS). Empty auto-detects. |
-| `--chromium-profile-dir` | ❌ | *(none)* | Chromium profile folder. Empty auto-detects. |
-| `--webkit-profile-dir` | ❌ | *(none)* | Playwright WebKit profile folder. Empty auto-detects. |
+| `--chrome-profile-dir` | ❌ | *(none)* | Copy Chrome user-data dir to a temp folder, use that copy for this run, then delete it. Lets you capture pages that require an active logged-in session (cookies/storage from your real browser). **Your original profile is never modified or opened.** Pass empty (`""`) to auto-detect. |
+| `--edge-profile-dir` | ❌ | *(none)* | Same as above but for Microsoft Edge. **Original profile is never modified.** |
+| `--brave-profile-dir` | ❌ | *(none)* | Same as above but for Brave. **Original profile is never modified.** |
+| `--firefox-profile-dir` | ❌ | *(none)* | Same as above but for Firefox. Pass root dir or specific profile folder; empty auto-detects. **Original profile is never modified.** |
+| `--safari-profile-dir` | ❌ | *(none)* | Same as above but for Safari (macOS only). **Original profile is never modified.** |
+| `--chromium-profile-dir` | ❌ | *(none)* | Same as above but for Chromium. **Original profile is never modified.** |
+| `--webkit-profile-dir` | ❌ | *(none)* | Same as above but for Playwright WebKit. **Original profile is never modified.** |
 | | | | ⚠️ Only **one** browser profile flag per run — passing two returns exit code 2 |
 | `--run-js-file` | ❌ | *(none)* | Execute JS file in browser page and wait until it finishes |
 | `--post-load-wait-ms` | ❌ | `0` | Extra wait in milliseconds after page load and before `--run-js-file`/screenshot |
@@ -186,6 +186,13 @@ p2cxt_context.md:
 > `script` is only present when `--run-js-file` is used.
 > `cleanup_before_run` is only present when `--clean-temp` is combined with capture.
 > `history_file` is always present.
+>
+> **Browser profile safety**: the `--*-profile-dir` flags copy the user profile to a temporary
+> directory before launching the browser. The original profile directory is **never opened or
+> modified**. The temporary copy is deleted automatically when the script exits (success or error).
+> This makes it safe to use even while the real browser is running. The main use case is capturing
+> pages that require an authenticated session (cookies / local storage already present in the
+> real browser profile).
 
 ### Clean-only success (`--clean-temp` without `--url`)
 

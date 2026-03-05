@@ -32,12 +32,12 @@ Always pass `--json` so output is machine-readable.
 
 ### Minimal call
 ```bash
-python page2context.py --url "<URL>" --json
+python3 page2context.py --url "<URL>" --json
 ```
 
 ### Full call
 ```bash
-python page2context.py \
+python3 page2context.py \
   --clean-temp \
   --url    "<URL>" \
   --size   "<WIDTHxHEIGHT>" \
@@ -56,25 +56,25 @@ python page2context.py \
 
 ```bash
 # Chrome (default — uses Chromium engine)
-python page2context.py --url "<URL>" --chrome-profile-dir "" --json
+python3 page2context.py --url "<URL>" --chrome-profile-dir "" --json
 
 # Microsoft Edge
-python page2context.py --url "<URL>" --edge-profile-dir "" --json
+python3 page2context.py --url "<URL>" --edge-profile-dir "" --json
 
 # Brave
-python page2context.py --url "<URL>" --brave-profile-dir "" --json
+python3 page2context.py --url "<URL>" --brave-profile-dir "" --json
 
 # Firefox
-python page2context.py --url "<URL>" --firefox-profile-dir "" --json
+python3 page2context.py --url "<URL>" --firefox-profile-dir "" --json
 
 # Safari (macOS only)
-python page2context.py --url "<URL>" --safari-profile-dir "" --json
+python3 page2context.py --url "<URL>" --safari-profile-dir "" --json
 
 # Chromium (open-source build)
-python page2context.py --url "<URL>" --chromium-profile-dir "" --json
+python3 page2context.py --url "<URL>" --chromium-profile-dir "" --json
 
 # Playwright WebKit
-python page2context.py --url "<URL>" --webkit-profile-dir "" --json
+python3 page2context.py --url "<URL>" --webkit-profile-dir "" --json
 ```
 
 > Pass `""` to auto-detect the profile, or pass the explicit directory path.
@@ -306,7 +306,7 @@ make setup-webkit         # WebKit only (Safari)
 Use `test/example_log_cookies.js` as a ready-to-run sample for `--run-js-file`:
 
 ```bash
-python page2context.py --url "<URL>" --console-log --run-js-file "./test/example_log_cookies.js" --json
+python3 page2context.py --url "<URL>" --console-log --run-js-file "./test/example_log_cookies.js" --json
 ```
 
 When your JS file uses `return ...`, the value appears in `script.result`.

@@ -14,7 +14,7 @@ import sys
 import tempfile
 import textwrap
 import traceback
-from typing import NoReturn
+from typing import NoReturn, Optional, Tuple
 from urllib.parse import urljoin, urlparse
 from urllib.request import Request
 from playwright.sync_api import sync_playwright, Error as PlaywrightError
@@ -141,7 +141,7 @@ def _error_exit(code: int, message: str, **extra) -> NoReturn:
     _emit(payload)
     sys.exit(code)
 
-def _navigation_hint(url: str, reason: str | None = None) -> str | None:
+def _navigation_hint(url: str, reason: Optional[str] = None) -> Optional[str]:
     """Return a short, actionable hint for common navigation failures.
 
     Goal: help users/agents distinguish *network reachability* problems from
@@ -175,7 +175,7 @@ SYNTAX_HELP = textwrap.dedent("""\
     page2context v{version}
     Capture a webpage (screenshot + DOM) into Markdown outputs for AI context.
     Usage:
-      python page2context.py --url "<URL>" [OPTIONS]
+      python3 page2context.py --url "<URL>" [OPTIONS]
     Required:
       --url  "<URL>"                URL to capture (required unless using only --clean-temp)
     Optional:
@@ -197,15 +197,15 @@ SYNTAX_HELP = textwrap.dedent("""\
       --output <DIR>               Output folder (default: page2context)
       --json                       Machine-readable JSON output (for AI callers)
     Examples:
-      python page2context.py --url "https://example.com"
-      python page2context.py --clean-temp
-      python page2context.py --url "https://example.com" --chrome-profile-dir ""
-      python page2context.py --url "https://example.com" --firefox-profile-dir ""
-      python page2context.py --url "https://example.com" --edge-profile-dir ""
-      python page2context.py --url "https://example.com" --run-js-file "./script.js"
-      python page2context.py --url "https://example.com" --post-load-wait-ms 750
-      python page2context.py --url "https://example.com" --resources-regex "\\.(css|js)(\\?|$)"
-      python page2context.py --url "https://example.com" --size 1440x900 --crop "2x4:1,2" --output my_capture
+      python3 page2context.py --url "https://example.com"
+      python3 page2context.py --clean-temp
+      python3 page2context.py --url "https://example.com" --chrome-profile-dir ""
+      python3 page2context.py --url "https://example.com" --firefox-profile-dir ""
+      python3 page2context.py --url "https://example.com" --edge-profile-dir ""
+      python3 page2context.py --url "https://example.com" --run-js-file "./script.js"
+      python3 page2context.py --url "https://example.com" --post-load-wait-ms 750
+      python3 page2context.py --url "https://example.com" --resources-regex "\\.(css|js)(\\?|$)"
+      python3 page2context.py --url "https://example.com" --size 1440x900 --crop "2x4:1,2" --output my_capture
 """).format(version=__version__)
 class _TextArgumentParser(argparse.ArgumentParser):
     def error(self, message: str) -> None:
@@ -299,7 +299,7 @@ def parse_wait_ms(wait_ms_str: str) -> int:
     if wait_ms < 0:
         raise _CliArgError(f"Invalid --post-load-wait-ms value: {wait_ms!r}. Expected >= 0.")
     return wait_ms
-def _load_js_file(path_str: str | None) -> tuple[pathlib.Path | None, str | None]:
+def _load_js_file(path_str: Optional[str]) -> Tuple[Optional[pathlib.Path], Optional[str]]:
     if not path_str:
         return None, None
     js_path = pathlib.Path(path_str)
@@ -370,7 +370,7 @@ def _looks_like_chromium_profile_dir(path: pathlib.Path) -> bool:
     return ((path / "Local State").is_file()
             or (path / "Default").is_dir()
             or any(path.glob("Profile *")))
-def _find_firefox_profile_in_root(root: pathlib.Path) -> pathlib.Path | None:
+def _find_firefox_profile_in_root(root: pathlib.Path) -> Optional[pathlib.Path]:
     profiles_ini = root / "profiles.ini"
     resolved_root = root.resolve()
     if profiles_ini.is_file():
@@ -407,7 +407,7 @@ def _looks_like_profile(profile_key: str, path: pathlib.Path) -> bool:
     if profile_key == "safari":
         return (path / "History.db").exists() or (path / "Cookies").exists()
     return path.exists() and path.is_dir()
-def _discover_profile_dir(profile_key: str) -> pathlib.Path | None:
+def _discover_profile_dir(profile_key: str) -> Optional[pathlib.Path]:
     for candidate in _candidate_profile_dirs(profile_key):
         expanded = candidate.expanduser().resolve()
         if not expanded.exists() or not expanded.is_dir():
@@ -420,7 +420,7 @@ def _discover_profile_dir(profile_key: str) -> pathlib.Path | None:
         if _looks_like_profile(profile_key, expanded):
             return expanded
     return None
-def _resolve_profile(profile_key: str, path_str: str | None) -> pathlib.Path | None:
+def _resolve_profile(profile_key: str, path_str: Optional[str]) -> Optional[pathlib.Path]:
     if path_str is None:
         return None
     if path_str.strip() == "":
@@ -446,7 +446,7 @@ def _resolve_profile(profile_key: str, path_str: str | None) -> pathlib.Path | N
                         f"Directory does not look like a Firefox profile: {resolved}",
                         hint="Pass the Firefox root dir (~/.mozilla/firefox) or a specific profile folder containing prefs.js.")
     return resolved
-def _selected_profile(args) -> tuple[str | None, pathlib.Path | None]:
+def _selected_profile(args) -> Tuple[Optional[str], Optional[pathlib.Path]]:
     for arg_name, profile_key in PROFILE_ARG_TO_KEY.items():
         raw = getattr(args, arg_name)
         if raw is not None:
@@ -456,9 +456,9 @@ def _selected_profile(args) -> tuple[str | None, pathlib.Path | None]:
 # Profile temp-copy helpers
 # ---------------------------------------------------------------------------
 def _prepare_profile_temp_copy(
-    profile_key: str | None,
-    source: pathlib.Path | None,
-) -> tuple[pathlib.Path | None, pathlib.Path | None, pathlib.Path | None]:
+    profile_key: Optional[str],
+    source: Optional[pathlib.Path],
+) -> Tuple[Optional[pathlib.Path], Optional[pathlib.Path], Optional[pathlib.Path]]:
     if profile_key is None or source is None:
         return None, None, None
     if not source.exists() or not source.is_dir():
@@ -480,7 +480,7 @@ def _prepare_profile_temp_copy(
         return source, copy_dir, copy_root
     except OSError as exc:
         _error_exit(EXIT_IO_ERR, f"Cannot prepare {profile_key} temp copy: {exc}", path=str(source))
-def _cleanup_temp_copy(copy_root: pathlib.Path | None) -> bool:
+def _cleanup_temp_copy(copy_root: Optional[pathlib.Path]) -> bool:
     if copy_root is None:
         return True
     try:
@@ -498,7 +498,7 @@ def _cleanup_prefixed_files(output_dir: pathlib.Path) -> None:
 # ---------------------------------------------------------------------------
 # Tile extraction
 # ---------------------------------------------------------------------------
-def extract_tiles(full_screenshot: pathlib.Path | str, output_dir: pathlib.Path,
+def extract_tiles(full_screenshot: "pathlib.Path | str", output_dir: pathlib.Path,
                   cols: int, rows: int, tiles: list[int]) -> list[pathlib.Path]:
     try:
         from PIL import Image as PILImage  # type: ignore
@@ -524,7 +524,7 @@ def extract_tiles(full_screenshot: pathlib.Path | str, output_dir: pathlib.Path,
 # ---------------------------------------------------------------------------
 # Regex / resource helpers
 # ---------------------------------------------------------------------------
-def _compile_regex_or_exit(pattern: str | None) -> "re.Pattern[str] | None":
+def _compile_regex_or_exit(pattern: Optional[str]) -> Optional["re.Pattern[str]"]:
     if pattern is None:
         return None
     try:
@@ -646,7 +646,7 @@ def _clean_historical_artifacts() -> dict:
             kept.append(str(path))
     _save_artifact_history(kept)
     return {"cleaned": cleaned, "failed": failed, "cleaned_files": len(cleaned)}
-def _browser_install_hint(exc: "PlaywrightError", browser_key: str) -> str | None:
+def _browser_install_hint(exc: "PlaywrightError", browser_key: str) -> Optional[str]:
     """Return an install hint if the error is a missing browser executable, else None."""
     raw = str(exc)
     if "Executable doesn't exist" in raw or "executable doesn't exist" in raw:

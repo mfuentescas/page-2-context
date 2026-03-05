@@ -69,19 +69,19 @@ Profile flags let you reuse an already-authenticated session (cookies/storage) *
 ## Minimal usage
 
 ```bash
-python page2context.py --url "<URL>" --json
+python3 page2context.py --url "<URL>" --json
 ```
 
 Authenticated capture (Chrome profile auto-detect):
 
 ```bash
-python page2context.py --url "<URL>" --chrome-profile-dir "" --json
+python3 page2context.py --url "<URL>" --chrome-profile-dir "" --json
 ```
 
 Run trusted JS + wait for animations + capture + console log:
 
 ```bash
-python page2context.py --url "<URL>" --post-load-wait-ms 1200 --run-js-file "./test/example_log_cookies.js" --console-log --json
+python3 page2context.py --url "<URL>" --post-load-wait-ms 1200 --run-js-file "./test/example_log_cookies.js" --console-log --json
 ```
 
 ## Agent workflow (deterministic)

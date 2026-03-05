@@ -2,35 +2,43 @@
 
 AGENT_SKILL := agent-skill.md
 
+VENV_DIR ?= .venv
+VENV_PY  := $(VENV_DIR)/bin/python3
+VENV_PIP := $(VENV_PY) -m pip
+
 # Install Python deps + Chromium (minimum required to run the tool)
-setup: setup-deps setup-chromium sync-agent-skills
+setup: setup-venv setup-deps setup-chromium sync-agent-skills
 	@echo ""
 	@echo "Core setup complete (Chromium ready)."
 	@echo "To install additional browsers interactively, run:  make setup-browsers"
 
-# Install Python dependencies only
-setup-deps:
-	python3 -m pip install -r requirements.txt
+# Create a local venv (preferred for agent-driven installs)
+setup-venv:
+	@test -x "$(VENV_PY)" || (python3 -m venv "$(VENV_DIR)" && "$(VENV_PIP)" install --upgrade pip)
 
-# Individual browser install targets
-setup-chromium:
-	python3 -m playwright install chromium
+# Install Python dependencies only (into the local venv)
+setup-deps: setup-venv
+	"$(VENV_PIP)" install -r requirements.txt
 
-setup-firefox:
-	python3 -m playwright install firefox
+# Individual browser install targets (use venv python)
+setup-chromium: setup-venv
+	"$(VENV_PY)" -m playwright install chromium
 
-setup-edge:
-	python3 -m playwright install msedge
+setup-firefox: setup-venv
+	"$(VENV_PY)" -m playwright install firefox
 
-setup-brave:
+setup-edge: setup-venv
+	"$(VENV_PY)" -m playwright install msedge
+
+setup-brave: setup-venv
 	@echo "Brave uses the Chromium engine — install chromium if not already done:"
-	python3 -m playwright install chromium
+	"$(VENV_PY)" -m playwright install chromium
 
-setup-webkit:
-	python3 -m playwright install webkit
+setup-webkit: setup-venv
+	"$(VENV_PY)" -m playwright install webkit
 
 # Interactive: ask Y/n for each supported browser
-setup-browsers:
+setup-browsers: setup-venv
 	@echo ""
 	@echo "Optional browser installation (press Enter to accept default Y):"
 	@echo ""
@@ -40,9 +48,9 @@ setup-browsers:
 	  ans=$${ans:-Y}; \
 	  case "$$ans" in [Yy]*) return 0;; *) return 1;; esac; \
 	}; \
-	_ask "Firefox"   && python3 -m playwright install firefox   || echo "  Skipping Firefox."; \
-	_ask "WebKit"    && python3 -m playwright install webkit    || echo "  Skipping WebKit."; \
-	_ask "Edge"      && python3 -m playwright install msedge    || echo "  Skipping Edge."; \
+	_ask "Firefox"   && "$(VENV_PY)" -m playwright install firefox   || echo "  Skipping Firefox."; \
+	_ask "WebKit"    && "$(VENV_PY)" -m playwright install webkit    || echo "  Skipping WebKit."; \
+	_ask "Edge"      && "$(VENV_PY)" -m playwright install msedge    || echo "  Skipping Edge."; \
 	echo ""; \
 	echo "Done. Brave and Chromium share the same engine (already installed via setup-chromium)."
 
@@ -71,8 +79,10 @@ test:
 
 # Quick usage example — override URL as needed
 run:
-	python3 page2context.py --url "http://github.com/"
+	@PY=$$(test -x "$(VENV_PY)" && echo "$(VENV_PY)" || echo "python3"); \
+	$$PY page2context.py --url "http://github.com/"
 
 # Example with viewport size and grid crop
 run-crop:
-	python3 page2context.py --url "http://github.com/" --size 1920x1080 --crop "3x9:1,27"
+	@PY=$$(test -x "$(VENV_PY)" && echo "$(VENV_PY)" || echo "python3"); \
+	$$PY page2context.py --url "http://github.com/" --size 1920x1080 --crop "3x9:1,27"

@@ -261,5 +261,13 @@ playwright install chromium
 
 Or:
 ```bash
-make setup
+make setup                # installs deps + Chromium
+make setup-browsers       # interactive Y/n prompt for Firefox, Edge, WebKit
+make setup-firefox        # Firefox only
+make setup-edge           # Edge only
+make setup-webkit         # WebKit only (Safari)
 ```
+
+> If the tool exits with `Executable doesn't exist at ...`, run the corresponding
+> `make setup-<browser>` command or `python3 -m playwright install <browser>`.
+

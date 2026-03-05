@@ -7,8 +7,9 @@
 
 ## What this skill does
 
-Runs a real Chromium browser (via Playwright), navigates to a URL, takes a
-full-page screenshot and grabs the live DOM, then writes everything into
+Runs a real browser (Chromium by default, or Firefox/WebKit when a browser profile
+flag is used) via Playwright, navigates to a URL, takes a full-page screenshot
+and grabs the live DOM, then writes everything into
 `<output_dir>/p2cxt_context.md` and `<output_dir>/p2cxt_html.html`.
 
 - **No crop** → one `p2cxt_screenshot.png` + raw DOM in `p2cxt_html.html`
@@ -289,8 +290,15 @@ playwright install chromium
 
 Or with make:
 ```bash
-make setup
+make setup                # installs deps + Chromium
+make setup-browsers       # interactive Y/n prompt for Firefox, Edge, WebKit
+make setup-firefox        # Firefox only
+make setup-edge           # Edge only
+make setup-webkit         # WebKit only (Safari)
 ```
+
+> If the tool exits with `Executable doesn't exist at ...`, run the corresponding
+> `make setup-<browser>` command or `python3 -m playwright install <browser>`.
 
 Use `test/example_log_cookies.js` as a ready-to-run sample for `--run-js-file`:
 

@@ -7,15 +7,23 @@
 
 ## Why?
 
-When you ask an AI to help with CSS, layout or UI code, it can't *see* your browser.
-**page2context** fixes that: it opens the page in a real Chromium browser (via Playwright),
-takes a full-page screenshot, grabs the live DOM, and writes output files into
-`<output_dir>/p2cxt_context.md` (screenshots + reference) and `<output_dir>/p2cxt_html.html` (raw DOM HTML) — ready to drop into any AI chat.
+This tool was born while migrating an Angular 17 web app to Angular 21.
+The upgrade broke dozens of CSS rules and layout details — the kind of issues
+that only show up visually. Comparing before and after pixel by pixel, while
+asking an AI to help fix each regression, was painfully slow because no AI can
+*see* your browser.
+
+**page2context** fixes that: it opens any URL in a real browser (via Playwright),
+takes a full-page screenshot, grabs the live DOM, and writes everything into
+`p2cxt_context.md` + `p2cxt_html.html` — ready to drop into GitHub Copilot,
+Cursor, Claude, or any AI chat. Now the AI can see exactly what you see, and
+you can compare layouts, spot CSS regressions, and fix them without leaving
+your editor.
 
 ```
 +----------------------+    page2context    +--------------------------+
 |  Any URL / localhost | ────────────────►  |  page2context/           |
-|  (real Chromium)     |                    |  ├── p2cxt_context.md    |
+|  (real browser)      |                    |  ├── p2cxt_context.md    |
 |                      |                    |  ├── p2cxt_html.html     |
 |                      |                    |  ├── p2cxt_screenshot.png |
 |                      |                    |  └── p2cxt_tile_1.png (opt.) |
@@ -31,6 +39,7 @@ takes a full-page screenshot, grabs the live DOM, and writes output files into
 
 - Python 3.11+
 - Chromium (installed automatically via `make setup`)
+- Other browsers optional — install only what you need
 
 ---
 
@@ -42,11 +51,26 @@ cd page2context
 make setup
 ```
 
-`make setup` runs:
+`make setup` installs Python dependencies and Chromium — the minimum required to run the tool.
+
+### Installing additional browsers
+
+To capture pages using Firefox, Edge, Brave, or WebKit profiles, the corresponding Playwright browser must be installed. Run the interactive installer to choose which ones you need:
+
 ```bash
-pip install -r requirements.txt   # Playwright + Pillow
-playwright install chromium       # Downloads Chromium
+make setup-browsers   # prompts Y/n for each browser (default: Y)
 ```
+
+Or install them individually:
+
+```bash
+make setup-firefox    # Firefox
+make setup-edge       # Microsoft Edge
+make setup-webkit     # WebKit (Safari engine)
+make setup-brave      # Brave (uses Chromium engine — same as make setup-chromium)
+```
+
+> If you see an error like `Executable doesn't exist at ...firefox...`, just run `make setup-firefox` (or the corresponding command for your browser).
 
 ---
 
@@ -502,20 +526,31 @@ the browser; only a temporary copy is used and it is deleted on exit.
 
 ## AI skill integration
 
-For AI assistants that can invoke CLI tools, see **[agent-skill.md](agent-skill.md)** —
-full call spec, JSON schema and error codes optimised for programmatic use.
+This project ships two skill descriptor files so any AI assistant can learn
+to use `page2context` automatically:
 
-For skills.sh compatible agents (GitHub Copilot, Cursor, Claude Code, etc.),
-see **[SKILL.md](SKILL.md)**.
+| File | Purpose | How to use |
+|------|---------|------------|
+| **[SKILL.md](SKILL.md)** | [skills.sh](https://skills.sh) format — for GitHub Copilot, Cursor, Claude Code and other agents that auto-discover `SKILL.md` files in the workspace. | Just place this repo in your project — the AI will find `SKILL.md` automatically. |
+| **[agent-skill.md](agent-skill.md)** | Generic AI agent instructions — full call spec, JSON schema, exit codes, and a suggested workflow. | Copy `agent-skill.md` into any AI system prompt, custom GPT instructions, or MCP config where the agent can invoke CLI tools. |
+
+Both files document the same tool; `SKILL.md` uses the skills.sh front-matter
+convention while `agent-skill.md` is a standalone reference suitable for any
+AI system.
 
 ---
 
 ## Makefile shortcuts
 
 ```bash
-make setup      # Install dependencies + Chromium
-make test       # Run smoke test suite
-make version    # Print current version
-make run        # Quick capture of http://localhost:4200/
-make run-crop   # Capture with 1920x1080 + 3x9 crop tiles 1,27
+make setup            # Install Python deps + Chromium (minimum to run)
+make setup-browsers   # Interactive: Y/n prompt for each additional browser
+make setup-firefox    # Install Firefox for Playwright
+make setup-edge       # Install Microsoft Edge for Playwright
+make setup-webkit     # Install WebKit for Playwright
+make setup-brave      # Install Brave (uses Chromium engine)
+make test             # Run smoke test suite
+make version          # Print current version
+make run              # Quick capture of http://github.com/
+make run-crop         # Capture http://github.com/ with 1920x1080 + 3x9 crop
 ```

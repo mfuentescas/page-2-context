@@ -505,7 +505,8 @@ def _extract_resource_candidates_from_html(html: str, base_url: str) -> set[str]
             candidates.add(abs_url)
     return candidates
 def _download_resources(urls: list[str], output_dir: pathlib.Path,
-                        timeout_seconds: int = 20) -> tuple[list[pathlib.Path], list[str]]:
+                        timeout_seconds: int = 20,
+                        allowed_host: str = "") -> tuple[list[pathlib.Path], list[str]]:
     import urllib.request as _urllib_req
 
     # Security: custom opener that does NOT follow redirects, to prevent SSRF via open redirects.
@@ -514,6 +515,8 @@ def _download_resources(urls: list[str], output_dir: pathlib.Path,
             return None  # Block all redirects
 
     opener = _urllib_req.build_opener(_NoRedirectHandler)
+    # Normalise allowed_host for comparison (strip port)
+    allowed_host_norm = (allowed_host or "").lower().split(":")[0]
 
     downloaded: list[pathlib.Path] = []
     failures: list[str] = []
@@ -526,7 +529,9 @@ def _download_resources(urls: list[str], output_dir: pathlib.Path,
             continue
 
         # Security: block requests to private/loopback/link-local hosts (SSRF protection).
-        if _is_private_host(parsed.hostname or ""):
+        # Exception: the host of the target --url is always trusted (user navigated there explicitly).
+        resource_host = (parsed.hostname or "").lower()
+        if resource_host != allowed_host_norm and _is_private_host(resource_host):
             failures.append(f"{url} :: blocked: private/internal host")
             continue
 
@@ -599,9 +604,27 @@ def _clean_historical_artifacts() -> dict:
             kept.append(str(path))
     _save_artifact_history(kept)
     return {"cleaned": cleaned, "failed": failed, "cleaned_files": len(cleaned)}
-# ---------------------------------------------------------------------------
-# Main
-# ---------------------------------------------------------------------------
+def _browser_install_hint(exc: "PlaywrightError", browser_key: str) -> str | None:
+    """Return an install hint if the error is a missing browser executable, else None."""
+    raw = str(exc)
+    if "Executable doesn't exist" in raw or "executable doesn't exist" in raw:
+        pw_engine = PROFILE_KEY_TO_BROWSER_TYPE.get(browser_key, browser_key)
+        # Map browser key to the right make target
+        make_target_map = {
+            "chrome": "setup-chromium", "chromium": "setup-chromium",
+            "edge": "setup-edge", "brave": "setup-brave",
+            "firefox": "setup-firefox",
+            "safari": "setup-webkit", "webkit": "setup-webkit",
+        }
+        make_target = make_target_map.get(browser_key, f"setup-{pw_engine}")
+        return (
+            f"Browser '{browser_key}' is not installed for Playwright. "
+            f"Run:  python3 -m playwright install {pw_engine}  "
+            f"(or:  make {make_target})"
+        )
+    return None
+
+
 def main() -> None:
     global _profile_source_output
     args = parse_args()
@@ -664,15 +687,33 @@ def main() -> None:
                     page = context.pages[0] if context.pages else context.new_page()
                     profile_used = True
                 except PlaywrightError as exc:
+                    hint = _browser_install_hint(exc, selected_profile_key or selected_browser_type)
+                    if hint:
+                        _error_exit(EXIT_NAVIGATION_ERR, hint,
+                                    fix=f"python3 -m playwright install {selected_browser_type}")
                     if args.console_log:
                         _log_console(f"[profile:fallback] {exc}")
+                    try:
+                        browser  = browser_type.launch()
+                        context  = browser.new_context()
+                        page     = context.new_page()
+                    except PlaywrightError as exc2:
+                        hint2 = _browser_install_hint(exc2, selected_profile_key or selected_browser_type)
+                        if hint2:
+                            _error_exit(EXIT_NAVIGATION_ERR, hint2,
+                                        fix=f"python3 -m playwright install {selected_browser_type}")
+                        raise
+            else:
+                try:
                     browser  = browser_type.launch()
                     context  = browser.new_context()
                     page     = context.new_page()
-            else:
-                browser  = browser_type.launch()
-                context  = browser.new_context()
-                page     = context.new_page()
+                except PlaywrightError as exc:
+                    hint = _browser_install_hint(exc, selected_profile_key or selected_browser_type)
+                    if hint:
+                        _error_exit(EXIT_NAVIGATION_ERR, hint,
+                                    fix=f"python3 -m playwright install {selected_browser_type}")
+                    raise
             if args.console_log:
                 page.on("console",       lambda msg: _log_console(f"[console:{msg.type}] {msg.text}"))
                 page.on("pageerror",     lambda err: _log_console(f"[pageerror] {err}"))
@@ -712,6 +753,10 @@ def main() -> None:
             _log_console(f"[navigation:error] {exc}")
             _write_console_log(console_log_path, console_lines)
         raw = str(exc)
+        hint = _browser_install_hint(exc, selected_profile_key or selected_browser_type)
+        if hint:
+            _error_exit(EXIT_NAVIGATION_ERR, hint,
+                        fix=f"python3 -m playwright install {selected_browser_type}")
         if   "ERR_NAME_NOT_RESOLVED"     in raw: reason = "DNS resolution failed - host not found."
         elif "ERR_CONNECTION_REFUSED"    in raw: reason = "Connection refused - nothing listening at that address."
         elif "ERR_CONNECTION_TIMED_OUT"  in raw or "Timeout" in raw: reason = "Connection timed out."
@@ -745,7 +790,9 @@ def main() -> None:
             if _looks_downloadable_url(obs):
                 candidates.add(obs)
         matched_resource_urls = sorted(u for u in candidates if resources_regex.search(u))
-        resource_paths, resource_failures = _download_resources(matched_resource_urls, output_dir)
+        resource_paths, resource_failures = _download_resources(
+            matched_resource_urls, output_dir,
+            allowed_host=urlparse(args.url).hostname or "")
     # -- Write Markdown ----------------------------------------------------
     md_path   = output_dir / f"{OUTPUT_PREFIX}context.md"
     html_path = output_dir / f"{OUTPUT_PREFIX}html.html"

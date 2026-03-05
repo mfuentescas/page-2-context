@@ -18,6 +18,7 @@ from typing import NoReturn
 from urllib.parse import urljoin, urlparse
 from urllib.request import Request
 from playwright.sync_api import sync_playwright, Error as PlaywrightError
+
 def _load_version() -> str:
     version_file = pathlib.Path(__file__).parent / "VERSION"
     try:
@@ -127,8 +128,49 @@ def _emit_text(payload: dict) -> None:
 def _success(message: str, **extra) -> None:
     _emit({"status": "success", "message": message, **extra})
 def _error_exit(code: int, message: str, **extra) -> NoReturn:
-    _emit({"status": "error", "exit_code": code, "message": message, **extra})
+    payload = {"status": "error", "exit_code": code, "message": message, **extra}
+
+    # Add a navigation hint when we have URL + reason and caller didn't already provide a hint.
+    if code == EXIT_NAVIGATION_ERR and "hint" not in payload:
+        url = payload.get("url")
+        if isinstance(url, str) and url:
+            hint = _navigation_hint(url, payload.get("reason") if isinstance(payload.get("reason"), str) else None)
+            if hint:
+                payload["hint"] = hint
+
+    _emit(payload)
     sys.exit(code)
+
+def _navigation_hint(url: str, reason: str | None = None) -> str | None:
+    """Return a short, actionable hint for common navigation failures.
+
+    Goal: help users/agents distinguish *network reachability* problems from
+    missing dependencies, so they don't try random pip installs.
+    """
+    try:
+        parsed = urlparse(url)
+        host = (parsed.hostname or "").lower()
+    except Exception:
+        host = ""
+
+    r = (reason or "").lower()
+
+    # Localhost/dev-server specific guidance.
+    if host in {"localhost", "127.0.0.1", "::1"}:
+        return (
+            "This looks like a localhost/dev-server URL. Verify the server is running and reachable from the same machine/runtime running page2context. "
+            "If you're running this inside a container/CI/agent sandbox, `localhost` refers to that runtime, not your host OS; try the host IP, `host.docker.internal`, or expose the port."
+        )
+
+    # Generic hints.
+    if "dns" in r or "name not resolved" in r or "host not found" in r:
+        return "DNS resolution failed. Check your network, VPN/proxy settings, and /etc/resolv.conf (or corporate DNS rules)."
+    if "refused" in r:
+        return "Connection refused. The server may not be listening on that host/port, or a firewall is blocking it."
+    if "timeout" in r:
+        return "Navigation timed out. The server may be slow/down, or network access is restricted in this runtime."
+    return None
+
 SYNTAX_HELP = textwrap.dedent("""\
     page2context v{version}
     Capture a webpage (screenshot + DOM) into Markdown outputs for AI context.
@@ -776,8 +818,8 @@ def main() -> None:
     # -- Tile extraction ---------------------------------------------------
     tile_paths: list[pathlib.Path] = []
     if crop_parsed:
-        cols, rows, tiles = crop_parsed
         try:
+            cols, rows, tiles = crop_parsed
             tile_paths = extract_tiles(full_screenshot, output_dir, cols, rows, tiles)
         except Exception as exc:
             _error_exit(EXIT_IO_ERR, f"Crop failed: {exc}", screenshot=str(full_screenshot))

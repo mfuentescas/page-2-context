@@ -101,6 +101,10 @@ python3 -m playwright install firefox
 
 (or use the Makefile helper like `make setup-firefox`).
 
+If you get `exit_code=3` for a `http://localhost:...` URL, this is usually **not** a Python dependency issue:
+- Ensure your dev server is running (e.g. `curl -I http://localhost:4200`).
+- If running this skill inside Docker/CI/agent sandboxes, `localhost` refers to that runtime, not your host OS. Use the host IP / `host.docker.internal` / proper port forwarding.
+
 ## More docs
 
 - `README.md` (user guide + install)

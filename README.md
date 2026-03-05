@@ -67,7 +67,14 @@ Running with no arguments prints full usage help.
 | `--size <WxH>` | ❌ | `1280x720` | Viewport size, e.g. `1920x1080` |
 | `--crop <spec>` | ❌ | *(none)* | Grid crop — see below |
 | `--console-log` | ❌ | *(flag)* | Capture browser console/page/navigation errors into `p2cxt_console.log` |
-| `--chrome-profile-dir [dir]` | ❌ | *(none)* | Chrome user profile dir to copy into an ephemeral run profile; pass empty (`""`) to auto-detect first default profile for your OS |
+| `--chrome-profile-dir [dir]` | ❌ | *(none)* | Chrome user profile dir to copy into an ephemeral run profile; pass empty (`""`) to auto-detect |
+| `--edge-profile-dir [dir]` | ❌ | *(none)* | Same as above but for Microsoft Edge |
+| `--brave-profile-dir [dir]` | ❌ | *(none)* | Same as above but for Brave |
+| `--firefox-profile-dir [dir]` | ❌ | *(none)* | Firefox user profile dir; pass empty to auto-detect |
+| `--safari-profile-dir [dir]` | ❌ | *(none)* | Safari profile dir (macOS only); pass empty to auto-detect |
+| `--chromium-profile-dir [dir]` | ❌ | *(none)* | Chromium user profile dir; pass empty to auto-detect |
+| `--webkit-profile-dir [dir]` | ❌ | *(none)* | Playwright WebKit profile dir; pass empty to auto-detect |
+| | | | ⚠️ Only **one** browser profile flag can be used per run |
 | `--run-js-file <path>` | ❌ | *(none)* | Execute a JS file inside the opened page and wait for completion |
 | `--post-load-wait-ms <ms>` | ❌ | `0` | Extra wait after page load and before `--run-js-file`/screenshot (useful for animations) |
 | `--resources-regex <regex>` | ❌ | *(none)* | Download matching resources seen in HTML or browser traffic |
@@ -102,6 +109,15 @@ python page2context.py --url "https://example.com" --chrome-profile-dir "~/.conf
 
 # Auto-detect first default Chrome profile (errors if none is found)
 python page2context.py --url "https://example.com" --chrome-profile-dir ""
+
+# Use a Firefox profile directory for this run
+python page2context.py --url "https://example.com" --firefox-profile-dir "~/.mozilla/firefox/abc.default-release"
+
+# Auto-detect Firefox profile
+python page2context.py --url "https://example.com" --firefox-profile-dir ""
+
+# Use Edge profile
+python page2context.py --url "https://example.com" --edge-profile-dir ""
 
 # Execute custom JavaScript inside the page and wait until it finishes
 python page2context.py --url "https://example.com" --run-js-file "./script.js"
@@ -253,16 +269,18 @@ See [p2cxt_console.log](p2cxt_console.log) for captured console output and brows
 - Result: `...`
 ```
 
-### With `--chrome-profile-dir "~/.config/google-chrome"`
+### With `--chrome-profile-dir "~/.config/google-chrome"` / `--firefox-profile-dir <dir>` / etc.
 
 The tool creates a temporary copy of the provided directory, uses that copy
 for the browser session, and removes it when the script finishes.
+Only one browser profile flag can be used per run; passing two returns exit code 2.
 
 `p2cxt_context.md` adds:
 
 ```markdown
-## Chrome Profile Copy
+## Browser Profile Copy
 
+- Browser: `chrome`
 - Source: `/home/user/.config/google-chrome`
 - Temp copy: `/tmp/p2cxt_chrome_copy_xxx/profile`
 - Used as persistent profile: `True`

@@ -34,7 +34,14 @@ python page2context.py [--clean-temp] [--url "<URL>"] [--size <WxH>] [--crop <CO
 | `--crop` | ❌ | *(none)* | Capture only specific grid tiles — see below |
 | `--clean-temp` | ❌ | *(flag)* | Clean historical `p2cxt_*` artifacts from the history cache |
 | `--console-log` | ❌ | *(flag)* | Save console/page/navigation errors to `p2cxt_console.log` |
-| `--chrome-profile-dir` | ❌ | *(none)* | Copy this Chrome user-data dir to ephemeral run profile and delete copy at end. Pass empty (`""`) to auto-detect first default profile. |
+| `--chrome-profile-dir` | ❌ | *(none)* | Copy this Chrome user-data dir to ephemeral run profile and delete copy at end. Pass empty (`""`) to auto-detect. |
+| `--edge-profile-dir` | ❌ | *(none)* | Same as above but for Microsoft Edge. |
+| `--brave-profile-dir` | ❌ | *(none)* | Same as above but for Brave. |
+| `--firefox-profile-dir` | ❌ | *(none)* | Firefox profile folder. Empty auto-detects. |
+| `--safari-profile-dir` | ❌ | *(none)* | Safari profile folder (macOS). Empty auto-detects. |
+| `--chromium-profile-dir` | ❌ | *(none)* | Chromium profile folder. Empty auto-detects. |
+| `--webkit-profile-dir` | ❌ | *(none)* | Playwright WebKit profile folder. Empty auto-detects. |
+| | | | ⚠️ Only **one** browser profile flag per run |
 | `--run-js-file` | ❌ | *(none)* | Execute JS file in page and wait for completion |
 | `--post-load-wait-ms` | ❌ | `0` | Extra wait in milliseconds after page load and before `--run-js-file`/screenshot |
 | `--resources-regex` | ❌ | *(none)* | Download resources whose URL matches regex from HTML + observed traffic |
@@ -56,6 +63,9 @@ left-to-right, top-to-bottom from 1. Each tile is saved as a separate PNG.
 --console-log → write console and browser/page/navigation errors to p2cxt_console.log
 --chrome-profile-dir "~/.config/google-chrome" → run with a temporary copied Chrome profile, cleaned at script end
 --chrome-profile-dir "" → auto-detect first default Chrome profile; errors if not found
+--firefox-profile-dir "" → auto-detect first default Firefox profile; errors if not found
+--edge-profile-dir "" → auto-detect first default Edge profile; errors if not found
+--brave-profile-dir "" → auto-detect first default Brave profile; errors if not found
 --run-js-file "./script.js" → execute script in browser and wait until it finishes
 --post-load-wait-ms 1200 → wait after load before running JS/screenshot (useful for animations)
 --run-js-file "./test/example_log_cookies.js" --console-log → log accessible browser cookies into p2cxt_console.log
@@ -87,8 +97,15 @@ History cache location:
     "cleaned_files": 1
   },
   "console_log": "page2context/p2cxt_console.log",
+  "browser_profile": {
+    "browser":   "chrome",
+    "source":    "/home/user/.config/google-chrome",
+    "temp_copy": "/tmp/p2cxt_chrome_copy_xxx/profile",
+    "used": true,
+    "cleaned": true
+  },
   "chrome_profile": {
-    "source": "/home/user/.config/google-chrome",
+    "source":    "/home/user/.config/google-chrome",
     "temp_copy": "/tmp/p2cxt_chrome_copy_xxx/profile",
     "used": true,
     "cleaned": true
@@ -128,12 +145,13 @@ History cache location:
 > Without crop, `p2cxt_screenshot.png` is the full-page image.
 > `resources` is only present when `--resources-regex` is used.
 > `console_log` is only present when `--console-log` is used.
-> `chrome_profile` is only present when `--chrome-profile-dir` is used.
-> `script` is only present when `--run-js-file` is used.
+> `chrome_profile_source` is always present — populated for `--chrome-profile-dir` only; `""` otherwise.
+> `browser_profile` is present when any `--*-profile-dir` flag is used; `browser` field names the browser used.
+> `chrome_profile` is also present (backward compat) when `--chrome-profile-dir` is used.
+> `console_log` is only present when `--console-log` is used.
 > `cleanup_before_run` is only present when `--clean-temp` is combined with capture.
 > `history_file` is always present.
 > `output`/`files` always contain absolute paths to created artifacts.
-> `chrome_profile_source` is always present and is `""` when no Chrome profile was used.
 
 Clean-only success (`--clean-temp` without `--url`):
 

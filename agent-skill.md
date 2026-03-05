@@ -47,6 +47,10 @@ python page2context.py \
   --json
 ```
 
+> Alternatively use `--firefox-profile-dir`, `--edge-profile-dir`, `--brave-profile-dir`,
+> `--safari-profile-dir`, `--chromium-profile-dir`, or `--webkit-profile-dir` instead of
+> `--chrome-profile-dir`. Only **one** browser profile flag can be used per run.
+
 ### Parameters
 
 | Parameter | Required | Default | Description |
@@ -56,7 +60,14 @@ python page2context.py \
 | `--crop` | ❌ | *(none)* | Grid crop spec — see below |
 | `--clean-temp` | ❌ | *(flag)* | Clean historical `p2cxt_*` artifacts from tracked cache |
 | `--console-log` | ❌ | *(flag)* | Save console/page/navigation errors into `p2cxt_console.log` |
-| `--chrome-profile-dir` | ❌ | *(none)* | Copy Chrome user-data dir to ephemeral run profile and delete copy at end. Pass empty (`""`) to auto-detect first default profile. |
+| `--chrome-profile-dir` | ❌ | *(none)* | Copy Chrome user-data dir to ephemeral run profile and delete copy at end. Pass empty (`""`) to auto-detect. |
+| `--edge-profile-dir` | ❌ | *(none)* | Same as above but for Microsoft Edge. |
+| `--brave-profile-dir` | ❌ | *(none)* | Same as above but for Brave. |
+| `--firefox-profile-dir` | ❌ | *(none)* | Firefox profile folder. Empty auto-detects. |
+| `--safari-profile-dir` | ❌ | *(none)* | Safari profile folder (macOS). Empty auto-detects. |
+| `--chromium-profile-dir` | ❌ | *(none)* | Chromium profile folder. Empty auto-detects. |
+| `--webkit-profile-dir` | ❌ | *(none)* | Playwright WebKit profile folder. Empty auto-detects. |
+| | | | ⚠️ Only **one** browser profile flag per run — passing two returns exit code 2 |
 | `--run-js-file` | ❌ | *(none)* | Execute JS file in browser page and wait until it finishes |
 | `--post-load-wait-ms` | ❌ | `0` | Extra wait in milliseconds after page load and before `--run-js-file`/screenshot |
 | `--resources-regex` | ❌ | *(none)* | Download resources whose URL matches regex from HTML refs + observed traffic |
@@ -121,8 +132,15 @@ p2cxt_context.md:
     "cleaned_files": 1
   },
   "console_log": "page2context/p2cxt_console.log",
+  "browser_profile": {
+    "browser":   "chrome",
+    "source":    "/home/user/.config/google-chrome",
+    "temp_copy": "/tmp/p2cxt_chrome_copy_xxx/profile",
+    "used": true,
+    "cleaned": true
+  },
   "chrome_profile": {
-    "source": "/home/user/.config/google-chrome",
+    "source":    "/home/user/.config/google-chrome",
     "temp_copy": "/tmp/p2cxt_chrome_copy_xxx/profile",
     "used": true,
     "cleaned": true
@@ -161,9 +179,10 @@ p2cxt_context.md:
 > `crop` is only present when `--crop` was used.
 > `resources` is only present when `--resources-regex` was used.
 > `output`/`files` are always present and contain absolute artifact paths.
-> `chrome_profile_source` is always present and is `""` when no Chrome profile was used.
+> `chrome_profile_source` is always present — populated for `--chrome-profile-dir` only; `""` otherwise.
+> `browser_profile` is present when any `--*-profile-dir` flag is used; contains `browser` key indicating which browser.
+> `chrome_profile` is also present for backward compatibility when `--chrome-profile-dir` is used.
 > `console_log` is only present when `--console-log` is used.
-> `chrome_profile` is only present when `--chrome-profile-dir` is used.
 > `script` is only present when `--run-js-file` is used.
 > `cleanup_before_run` is only present when `--clean-temp` is combined with capture.
 > `history_file` is always present.

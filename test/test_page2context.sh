@@ -558,6 +558,73 @@ assert_eq "invalid regex status=error" "$(json_field "$OUT" "status")" "error"
 assert_eq "invalid regex exit_code field=2" "$(json_field "$OUT" "exit_code")" "2"
 assert_eq "invalid regex reason present" "$(json_has_key "$OUT" "reason")" "True"
 
+info "Test 20: firefox-profile-dir uses ephemeral copy and cleans it"
+OUT_DIR_FF="${TMP_DIR}/run_firefox_profile"
+FF_SRC="${TMP_DIR}/firefox_profile_source"
+mkdir -p "${FF_SRC}"
+printf '[General]\nStartWithLastProfile=1\n\n[Profile0]\nName=default-release\nIsRelative=1\nPath=default-release\nDefault=1\n' > "${FF_SRC}/profiles.ini"
+mkdir -p "${FF_SRC}/default-release"
+printf 'user_pref("toolkit.telemetry.reportingpolicy.firstRun", false);\n' > "${FF_SRC}/default-release/prefs.js"
+FF_SRC_ABS="$(cd "${FF_SRC}" && pwd)"
+FF_PROFILE_ABS="$(cd "${FF_SRC}/default-release" && pwd)"
+
+run_and_capture OUT EC "${SCRIPT[@]}" --url "${TEST_URL}" --output "${OUT_DIR_FF}" --firefox-profile-dir "${FF_SRC}" --json
+assert_eq "firefox-profile-dir exit code is 0" "$EC" "0"
+assert_eq "firefox-profile-dir status=success" "$(json_field "$OUT" "status")" "success"
+assert_eq "browser_profile key present" "$(json_has_key "$OUT" "browser_profile")" "True"
+assert_eq "browser_profile.browser=firefox" "$(json_nested_field "$OUT" "browser_profile" "browser")" "firefox"
+assert_eq "browser_profile.source matches" "$(json_nested_field "$OUT" "browser_profile" "source")" "${FF_SRC_ABS}"
+assert_eq "browser_profile.cleaned=True" "$(json_nested_field "$OUT" "browser_profile" "cleaned")" "True"
+FF_TEMP_COPY="$(json_nested_field "$OUT" "browser_profile" "temp_copy")"
+[[ "$FF_TEMP_COPY" == /* ]] && ok "firefox temp copy path is absolute" || fail "firefox temp copy path not absolute"
+[[ ! -e "$FF_TEMP_COPY" ]] && ok "firefox temp copy removed after run" || fail "firefox temp copy still exists"
+grep -q "Browser Profile Copy" "${OUT_DIR_FF}/p2cxt_context.md" && ok "context includes Browser Profile Copy section" || fail "context missing Browser Profile Copy section"
+
+info "Test 21: firefox-profile-dir empty auto-discovers first default profile"
+FF_AUTO_HOME="${TMP_DIR}/home_ff_auto"
+FF_AUTO_ROOT="${FF_AUTO_HOME}/.mozilla/firefox"
+FF_AUTO_PROF="${FF_AUTO_ROOT}/abc123.default-release"
+mkdir -p "${FF_AUTO_PROF}"
+printf 'user_pref("test", true);\n' > "${FF_AUTO_PROF}/prefs.js"
+FF_AUTO_PROF_ABS="$(cd "${FF_AUTO_PROF}" && pwd)"
+
+run_and_capture OUT EC env HOME="${FF_AUTO_HOME}" PLAYWRIGHT_BROWSERS_PATH="${PLAYWRIGHT_BROWSERS_PATH_VALUE}" \
+  "${SCRIPT[@]}" --url "${TEST_URL}" --output "${TMP_DIR}/run_ff_auto" --firefox-profile-dir "" --json
+STATUS_FF="$(json_field "$OUT" "status")"
+if [[ "$STATUS_FF" == "success" || "$STATUS_FF" == "error" ]]; then
+  ok "firefox auto-discovery returned a valid status"
+else
+  fail "firefox auto-discovery returned unexpected status: $STATUS_FF"
+fi
+assert_eq "firefox auto-discovery browser_profile.source matches" \
+  "$(json_nested_field "$OUT" "browser_profile" "source")" "${FF_AUTO_PROF_ABS}"
+
+info "Test 22: firefox-profile-dir empty returns exit_code=4 when no profile found"
+FF_MISSING_HOME="${TMP_DIR}/home_ff_missing"
+mkdir -p "${FF_MISSING_HOME}"
+run_and_capture OUT EC env HOME="${FF_MISSING_HOME}" "${SCRIPT[@]}" \
+  --url "${TEST_URL}" --output "${TMP_DIR}/run_ff_missing" --firefox-profile-dir "" --json
+assert_eq "firefox missing auto-discovery exit code is 4" "$EC" "4"
+assert_eq "firefox missing auto-discovery status=error" "$(json_field "$OUT" "status")" "error"
+assert_eq "firefox missing auto-discovery exit_code field=4" "$(json_field "$OUT" "exit_code")" "4"
+
+info "Test 23: using two browser profile flags at once returns exit_code=2"
+run_and_capture OUT EC "${SCRIPT[@]}" --url "${TEST_URL}" \
+  --chrome-profile-dir "${TMP_DIR}/chrome_temp_source" \
+  --firefox-profile-dir "${TMP_DIR}/firefox_profile_source" --json
+assert_eq "two profile flags exit code is 2" "$EC" "2"
+assert_eq "two profile flags status=error" "$(json_field "$OUT" "status")" "error"
+assert_eq "two profile flags exit_code field=2" "$(json_field "$OUT" "exit_code")" "2"
+
+info "Test 24: help text contains all new browser profile flags"
+run_and_capture OUT EC "${SCRIPT[@]}"
+[[ "$OUT" == *"--firefox-profile-dir"* ]] && ok "help contains --firefox-profile-dir" || fail "help missing --firefox-profile-dir"
+[[ "$OUT" == *"--edge-profile-dir"* ]]    && ok "help contains --edge-profile-dir"    || fail "help missing --edge-profile-dir"
+[[ "$OUT" == *"--brave-profile-dir"* ]]   && ok "help contains --brave-profile-dir"   || fail "help missing --brave-profile-dir"
+[[ "$OUT" == *"--safari-profile-dir"* ]]  && ok "help contains --safari-profile-dir"  || fail "help missing --safari-profile-dir"
+[[ "$OUT" == *"--chromium-profile-dir"* ]] && ok "help contains --chromium-profile-dir" || fail "help missing --chromium-profile-dir"
+[[ "$OUT" == *"--webkit-profile-dir"* ]]  && ok "help contains --webkit-profile-dir"  || fail "help missing --webkit-profile-dir"
+
 echo "------------------------------------"
 echo "Results: ${PASS} passed  ${FAIL} failed"
 echo "------------------------------------"

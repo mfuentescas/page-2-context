@@ -77,7 +77,7 @@ make setup-brave      # Brave (uses Chromium engine — same as make setup-chrom
 ## Usage
 
 ```bash
-python page2context.py --url "<URL>" [OPTIONS]
+python3 page2context.py --url "<URL>" [OPTIONS]
 ```
 
 Running with no arguments prints full usage help.
@@ -111,64 +111,64 @@ Running with no arguments prints full usage help.
 
 ```bash
 # Basic capture → prints absolute created artifact paths
-python page2context.py --url "http://localhost:4200/"
+python3 page2context.py --url "http://localhost:4200/"
 
 # Clean only historical temporary artifacts (no --url needed)
-python page2context.py --clean-temp
+python3 page2context.py --clean-temp
 
 # Clean first, then capture normally
-python page2context.py --clean-temp --url "https://example.com"
+python3 page2context.py --clean-temp --url "https://example.com"
 
 # Custom viewport
-python page2context.py --url "https://example.com" --size 1920x1080
+python3 page2context.py --url "https://example.com" --size 1920x1080
 
 # Capture only specific tiles of a long page
-python page2context.py --url "https://example.com" --crop "3x9:1,27"
+python3 page2context.py --url "https://example.com" --crop "3x9:1,27"
 
 # Capture browser console/page errors
-python page2context.py --url "https://example.com" --console-log
+python3 page2context.py --url "https://example.com" --console-log
 
 # Use a copied Chrome user profile directory for this run
-python page2context.py --url "https://example.com" --chrome-profile-dir "~/.config/google-chrome"
+python3 page2context.py --url "https://example.com" --chrome-profile-dir "~/.config/google-chrome"
 
 # Auto-detect first default Chrome profile (errors if none is found)
-python page2context.py --url "https://example.com" --chrome-profile-dir ""
+python3 page2context.py --url "https://example.com" --chrome-profile-dir ""
 
 # Use a Firefox profile directory for this run
-python page2context.py --url "https://example.com" --firefox-profile-dir "~/.mozilla/firefox/abc.default-release"
+python3 page2context.py --url "https://example.com" --firefox-profile-dir "~/.mozilla/firefox/abc.default-release"
 
 # Auto-detect Firefox profile
-python page2context.py --url "https://example.com" --firefox-profile-dir ""
+python3 page2context.py --url "https://example.com" --firefox-profile-dir ""
 
 # Use Edge profile
-python page2context.py --url "https://example.com" --edge-profile-dir ""
+python3 page2context.py --url "https://example.com" --edge-profile-dir ""
 
 # Use Brave profile
-python page2context.py --url "https://example.com" --brave-profile-dir ""
+python3 page2context.py --url "https://example.com" --brave-profile-dir ""
 
 # Use Chromium profile
-python page2context.py --url "https://example.com" --chromium-profile-dir ""
+python3 page2context.py --url "https://example.com" --chromium-profile-dir ""
 
 # Use Safari profile (macOS only)
-python page2context.py --url "https://example.com" --safari-profile-dir ""
+python3 page2context.py --url "https://example.com" --safari-profile-dir ""
 
 # Use Playwright WebKit profile
-python page2context.py --url "https://example.com" --webkit-profile-dir ""
+python3 page2context.py --url "https://example.com" --webkit-profile-dir ""
 
 # Execute custom JavaScript inside the page and wait until it finishes
-python page2context.py --url "https://example.com" --run-js-file "./script.js"
+python3 page2context.py --url "https://example.com" --run-js-file "./script.js"
 
 # Wait 1200ms after load (before JS/screenshot) to let UI animations settle
-python page2context.py --url "https://example.com" --post-load-wait-ms 1200 --run-js-file "./script.js"
+python3 page2context.py --url "https://example.com" --post-load-wait-ms 1200 --run-js-file "./script.js"
 
 # Example script: log browser cookies from JS
-python page2context.py --url "https://example.com" --console-log --run-js-file "./test/example_log_cookies.js"
+python3 page2context.py --url "https://example.com" --console-log --run-js-file "./test/example_log_cookies.js"
 
 # Download only CSS/JS assets seen in source/network
-python page2context.py --url "https://example.com" --resources-regex "\\.(css|js)(\\?|$)"
+python3 page2context.py --url "https://example.com" --resources-regex "\\.(css|js)(\\?|$)"
 
 # All options — AI-friendly JSON output
-python page2context.py --url "https://example.com" \
+python3 page2context.py --url "https://example.com" \
   --size 1440x900 --crop "2x4:1,2" --console-log --chrome-profile-dir "~/.config/google-chrome" --run-js-file "./script.js" \
   --post-load-wait-ms 1200 --resources-regex "\\.(css|js)(\\?|$)" --output my_capture --json
 ```

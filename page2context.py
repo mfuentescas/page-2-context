@@ -175,7 +175,7 @@ SYNTAX_HELP = textwrap.dedent("""\
     page2context v{version}
     Capture a webpage (screenshot + DOM) into Markdown outputs for AI context.
     Usage:
-      python page2context.py --url "<URL>" [OPTIONS]
+      python3 page2context.py --url "<URL>" [OPTIONS]
     Required:
       --url  "<URL>"                URL to capture (required unless using only --clean-temp)
     Optional:
@@ -197,15 +197,15 @@ SYNTAX_HELP = textwrap.dedent("""\
       --output <DIR>               Output folder (default: page2context)
       --json                       Machine-readable JSON output (for AI callers)
     Examples:
-      python page2context.py --url "https://example.com"
-      python page2context.py --clean-temp
-      python page2context.py --url "https://example.com" --chrome-profile-dir ""
-      python page2context.py --url "https://example.com" --firefox-profile-dir ""
-      python page2context.py --url "https://example.com" --edge-profile-dir ""
-      python page2context.py --url "https://example.com" --run-js-file "./script.js"
-      python page2context.py --url "https://example.com" --post-load-wait-ms 750
-      python page2context.py --url "https://example.com" --resources-regex "\\.(css|js)(\\?|$)"
-      python page2context.py --url "https://example.com" --size 1440x900 --crop "2x4:1,2" --output my_capture
+      python3 page2context.py --url "https://example.com"
+      python3 page2context.py --clean-temp
+      python3 page2context.py --url "https://example.com" --chrome-profile-dir ""
+      python3 page2context.py --url "https://example.com" --firefox-profile-dir ""
+      python3 page2context.py --url "https://example.com" --edge-profile-dir ""
+      python3 page2context.py --url "https://example.com" --run-js-file "./script.js"
+      python3 page2context.py --url "https://example.com" --post-load-wait-ms 750
+      python3 page2context.py --url "https://example.com" --resources-regex "\\.(css|js)(\\?|$)"
+      python3 page2context.py --url "https://example.com" --size 1440x900 --crop "2x4:1,2" --output my_capture
 """).format(version=__version__)
 class _TextArgumentParser(argparse.ArgumentParser):
     def error(self, message: str) -> None:

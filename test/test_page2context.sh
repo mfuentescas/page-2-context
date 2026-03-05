@@ -7,7 +7,7 @@ SCRIPT=(python3 "${ROOT_DIR}/page2context.py")
 PASS=0
 FAIL=0
 SERVER_PID=""
-TEST_PORT=18080
+TEST_PORT=$((18080 + (RANDOM % 1000)))
 TEST_URL="http://localhost:${TEST_PORT}"
 TMP_DIR="${ROOT_DIR}/.tmp_test_page2context"
 
@@ -96,6 +96,48 @@ print("True" if field in data else "False")
 PY
 }
 
+json_nested_len() {
+  local json_payload="$1"
+  local parent="$2"
+  local child="$3"
+  python3 - "$json_payload" "$parent" "$child" <<'PY'
+import json
+import sys
+
+payload = sys.argv[1]
+parent = sys.argv[2]
+child = sys.argv[3]
+try:
+    data = json.loads(payload)
+except Exception:
+    sys.exit(2)
+
+node = data.get(parent, {})
+value = node.get(child, []) if isinstance(node, dict) else []
+print(len(value) if isinstance(value, list) else 0)
+PY
+}
+
+json_resources_stats() {
+  local json_payload="$1"
+  python3 - "$json_payload" <<'PY'
+import json
+import os
+import sys
+
+payload = json.loads(sys.argv[1])
+resources = payload.get("resources", {}) if isinstance(payload, dict) else {}
+files = resources.get("files", []) if isinstance(resources, dict) else []
+files = files if isinstance(files, list) else []
+
+css = sum(1 for p in files if isinstance(p, str) and p.lower().endswith(".css"))
+js = sum(1 for p in files if isinstance(p, str) and p.lower().endswith(".js"))
+missing = sum(1 for p in files if not (isinstance(p, str) and os.path.isfile(p)))
+
+print(f"{len(files)} {css} {js} {missing}")
+PY
+}
+
 check_runtime_deps() {
   if ! python3 -c "import playwright" >/dev/null 2>&1; then
     echo "[ERROR] Missing Python dependency: playwright"
@@ -150,10 +192,24 @@ run_and_capture() {
 
 start_server() {
   mkdir -p "${TMP_DIR}/www"
+  cat > "${TMP_DIR}/www/styles.css" <<'CSS'
+body { font-family: Arial, sans-serif; }
+h1 { color: #0b57d0; }
+CSS
+
+  cat > "${TMP_DIR}/www/app.js" <<'JS'
+console.log("page2context smoke test");
+JS
+
   cat > "${TMP_DIR}/www/index.html" <<'HTML'
 <!DOCTYPE html>
 <html lang="en">
-  <head><meta charset="UTF-8"><title>test</title></head>
+  <head>
+    <meta charset="UTF-8">
+    <title>test</title>
+    <link rel="stylesheet" href="/styles.css">
+    <script defer src="/app.js"></script>
+  </head>
   <body>
     <h1>page2context test page</h1>
     <p>Local smoke-test page.</p>
@@ -165,13 +221,20 @@ HTML
   SERVER_PID=$!
 
   for _ in $(seq 1 20); do
-    if curl -sf "${TEST_URL}" >/dev/null 2>&1; then
+    if ! kill -0 "${SERVER_PID}" >/dev/null 2>&1; then
+      echo "Local test server process exited unexpectedly" >&2
+      [[ -f "${TMP_DIR}/server.log" ]] && cat "${TMP_DIR}/server.log" >&2
+      exit 1
+    fi
+
+    if curl -sf "${TEST_URL}" | grep -q "page2context test page"; then
       return
     fi
     sleep 0.25
   done
 
-  echo "Could not start local test server" >&2
+  echo "Could not start local test server with expected fixture content" >&2
+  [[ -f "${TMP_DIR}/server.log" ]] && cat "${TMP_DIR}/server.log" >&2
   exit 1
 }
 
@@ -235,7 +298,23 @@ assert_eq "crop output has 5 files" "$(json_len "$OUT" "output")" "5"
 grep -q "p2cxt_tile_1.png" "${OUT_DIR_CROP}/p2cxt_context.md" && ok "context references tile 1" || fail "context missing tile 1"
 grep -q "p2cxt_html.html" "${OUT_DIR_CROP}/p2cxt_context.md" && ok "context references p2cxt_html.html (crop)" || fail "context missing p2cxt_html.html reference (crop)"
 
-info "Test 5: existing output dir cleans only p2cxt_* files"
+info "Test 5: resources-regex downloads css/js from HTML/network"
+OUT_DIR_RES="${TMP_DIR}/run_resources"
+run_and_capture OUT EC "${SCRIPT[@]}" --url "${TEST_URL}" --output "${OUT_DIR_RES}" --resources-regex "\\.(css|js)(\\?|$)" --json
+assert_eq "resources exit code is 0" "$EC" "0"
+assert_eq "resources status=success" "$(json_field "$OUT" "status")" "success"
+assert_eq "resources key present" "$(json_has_key "$OUT" "resources")" "True"
+assert_eq "resources files list has 2 entries" "$(json_nested_len "$OUT" "resources" "files")" "2"
+assert_eq "resources matched_urls has 2 entries" "$(json_nested_len "$OUT" "resources" "matched_urls")" "2"
+assert_eq "resources failed list is empty" "$(json_nested_len "$OUT" "resources" "failed")" "0"
+read -r RES_COUNT RES_CSS RES_JS RES_MISSING <<< "$(json_resources_stats "$OUT")"
+assert_eq "resources payload paths count" "$RES_COUNT" "2"
+assert_eq "resources include one css" "$RES_CSS" "1"
+assert_eq "resources include one js" "$RES_JS" "1"
+assert_eq "resources payload paths exist on disk" "$RES_MISSING" "0"
+grep -q "p2cxt_resource_" "${OUT_DIR_RES}/p2cxt_context.md" && ok "context references downloaded resources" || fail "context missing downloaded resources references"
+
+info "Test 6: existing output dir cleans only p2cxt_* files"
 OUT_DIR_CLEAN="${TMP_DIR}/run_cleanup"
 mkdir -p "${OUT_DIR_CLEAN}"
 printf 'keep' > "${OUT_DIR_CLEAN}/keep.txt"
@@ -245,13 +324,13 @@ assert_eq "cleanup run exit code is 0" "$EC" "0"
 [[ -f "${OUT_DIR_CLEAN}/keep.txt" ]] && ok "non-prefixed file kept" || fail "non-prefixed file removed"
 [[ ! -e "${OUT_DIR_CLEAN}/p2cxt_old.tmp" ]] && ok "old prefixed file removed" || fail "old prefixed file not removed"
 
-info "Test 6: invalid --size returns exit_code=2 in json"
+info "Test 7: invalid --size returns exit_code=2 in json"
 run_and_capture OUT EC "${SCRIPT[@]}" --url "${TEST_URL}" --size "bad" --json
 assert_eq "invalid size process exit code is 2" "$EC" "2"
 assert_eq "invalid size status=error" "$(json_field "$OUT" "status")" "error"
 assert_eq "invalid size exit_code field=2" "$(json_field "$OUT" "exit_code")" "2"
 
-info "Test 7: out-of-range tile returns exit_code=2 and valid_range"
+info "Test 8: out-of-range tile returns exit_code=2 and valid_range"
 run_and_capture OUT EC "${SCRIPT[@]}" --url "${TEST_URL}" --crop "2x2:99" --json
 assert_eq "out-of-range process exit code is 2" "$EC" "2"
 assert_eq "out-of-range status=error" "$(json_field "$OUT" "status")" "error"

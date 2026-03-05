@@ -65,6 +65,7 @@ Running with no arguments prints full usage help.
 | `--url "<URL>"` | ✅ | — | URL to capture |
 | `--size <WxH>` | ❌ | `1280x720` | Viewport size, e.g. `1920x1080` |
 | `--crop <spec>` | ❌ | *(none)* | Grid crop — see below |
+| `--resources-regex <regex>` | ❌ | *(none)* | Download matching resources seen in HTML or browser traffic |
 | `--output <dir>` | ❌ | `page2context` | Output folder |
 | `--json` | ❌ | *(flag)* | Machine-readable JSON output (for AI callers) |
 
@@ -82,9 +83,13 @@ python page2context.py --url "https://example.com" --size 1920x1080
 # Capture only specific tiles of a long page
 python page2context.py --url "https://example.com" --crop "3x9:1,27"
 
+# Download only CSS/JS assets seen in source/network
+python page2context.py --url "https://example.com" --resources-regex "\\.(css|js)(\\?|$)"
+
 # All options — AI-friendly JSON output
 python page2context.py --url "https://example.com" \
-  --size 1440x900 --crop "2x4:1,2" --output my_capture --json
+  --size 1440x900 --crop "2x4:1,2" \
+  --resources-regex "\\.(css|js)(\\?|$)" --output my_capture --json
 ```
 
 ---
@@ -164,6 +169,28 @@ page2context/
 See [p2cxt_html.html](p2cxt_html.html) for the full DOM HTML.
 ```
 
+### With `--resources-regex "\\.(css|js)(\\?|$)"`
+
+```text
+page2context/
+├── p2cxt_context.md
+├── p2cxt_html.html
+├── p2cxt_screenshot.png
+├── p2cxt_resource_001.css
+└── p2cxt_resource_002.js
+```
+
+`p2cxt_context.md` adds a section:
+
+```markdown
+## Downloaded Resources
+
+Regex: `\.(css|js)(\?|$)`
+
+- p2cxt_resource_001.css
+- p2cxt_resource_002.js
+```
+
 ---
 
 ## Output modes
@@ -192,6 +219,18 @@ ERROR (3): Could not load URL: https://bad-url.invalid
   "context":    "page2context/p2cxt_context.md",
   "html":       "page2context/p2cxt_html.html",
   "screenshot": "page2context/p2cxt_screenshot.png",
+  "resources": {
+    "regex": "\\.(css|js)(\\?|$)",
+    "matched_urls": [
+      "https://example.com/styles.css",
+      "https://example.com/app.js"
+    ],
+    "files": [
+      "page2context/p2cxt_resource_001.css",
+      "page2context/p2cxt_resource_002.js"
+    ],
+    "failed": []
+  },
   "crop": {
     "grid":  "3x9",
     "tiles": [1, 27],
@@ -199,6 +238,8 @@ ERROR (3): Could not load URL: https://bad-url.invalid
   }
 }
 ```
+
+> `resources` is only present when `--resources-regex` is used.
 
 ### Exit codes
 

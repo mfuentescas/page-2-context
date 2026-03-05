@@ -37,6 +37,7 @@ python page2context.py \
   --url    "<URL>" \
   --size   "<WIDTHxHEIGHT>" \
   --crop   "<COLSxROWS:TILE[,TILE]>" \
+  --resources-regex "<REGEX>" \
   --output "<folder-name>" \
   --json
 ```
@@ -48,6 +49,7 @@ python page2context.py \
 | `--url` | ✅ | — | URL to capture (always quote it) |
 | `--size` | ❌ | `1280x720` | Viewport size, e.g. `1920x1080` or `375x812` |
 | `--crop` | ❌ | *(none)* | Grid crop spec — see below |
+| `--resources-regex` | ❌ | *(none)* | Download resources whose URL matches regex from HTML refs + observed traffic |
 | `--output` | ❌ | `page2context` | Output folder |
 | `--json` | ✅ for AI | *(flag)* | Always use when calling programmatically |
 
@@ -101,6 +103,12 @@ p2cxt_context.md:
   "context":    "page2context/p2cxt_context.md",
   "html":       "page2context/p2cxt_html.html",
   "screenshot": "page2context/p2cxt_screenshot.png",
+  "resources": {
+    "regex": "\\.(css|js)(\\?|$)",
+    "matched_urls": ["https://example.com/styles.css", "https://example.com/app.js"],
+    "files": ["page2context/p2cxt_resource_001.css", "page2context/p2cxt_resource_002.js"],
+    "failed": []
+  },
   "crop": {
     "grid":  "3x9",
     "tiles": [1, 27],
@@ -110,6 +118,7 @@ p2cxt_context.md:
 ```
 
 > `crop` is only present when `--crop` was used.
+> `resources` is only present when `--resources-regex` was used.
 
 ### On error
 
@@ -143,7 +152,8 @@ p2cxt_context.md:
 2. Check status == "success", else report reason to user and stop
 3. Read <output_dir>/p2cxt_context.md — contains screenshots + structure
 4. Read <output_dir>/p2cxt_html.html — contains full DOM HTML
-5. Use both files to answer the user's question
+5. If provided, use `resources.files` artifacts (`p2cxt_resource_*`) for CSS/JS inspection
+6. Use all files to answer the user's question
 ```
 
 ---

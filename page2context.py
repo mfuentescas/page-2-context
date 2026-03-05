@@ -8,9 +8,12 @@ import argparse
 import json
 import math
 import pathlib
+import re
 import sys
 import textwrap
 import traceback
+from urllib.parse import urljoin, urlparse
+from urllib.request import Request, urlopen
 from playwright.sync_api import sync_playwright, Error as PlaywrightError
 # ---------------------------------------------------------------------------
 # Version
@@ -87,14 +90,17 @@ SYNTAX_HELP = textwrap.dedent("""\
                                    COLS x ROWS grid and saves each listed
                                    tile as a separate image (p2cxt_tile_1.png, etc.)
                                    in the output folder.
-      --output <DIR>             Output folder          (default: page2context)
-      --json                     Machine-readable JSON output (for AI callers)
+      --resources-regex <REGEX> Download resources whose URL matches REGEX
+                                  from HTML references and Playwright-observed traffic.
+       --output <DIR>             Output folder          (default: page2context)
+       --json                     Machine-readable JSON output (for AI callers)
     Examples:
       python page2context.py --url "https://example.com"
       python page2context.py --url "https://example.com" --size 1920x1080
       python page2context.py --url "https://example.com" --crop "3x9:1,27"
+      python page2context.py --url "https://example.com" --resources-regex "\\.(css|js)(\\?|$)"
       python page2context.py --url "https://example.com" --size 1440x900 \\
-                             --crop "2x4:1,2" --output my_capture
+                              --crop "2x4:1,2" --output my_capture
     Tile numbering for --crop (e.g. 3x9 grid):
       ┌───┬───┬───┐
       │ 1 │ 2 │ 3 │  row 1
@@ -126,6 +132,11 @@ def parse_args():
     parser.add_argument("--url",    required=True,          help="URL to capture")
     parser.add_argument("--size",   default="1280x720",     help="Viewport WIDTHxHEIGHT")
     parser.add_argument("--crop",   default=None,           help="Grid crop COLSxROWS:TILE[,TILE]")
+    parser.add_argument(
+        "--resources-regex",
+        default=None,
+        help="Download resources whose URL matches this regex (checks HTML refs and observed network URLs).",
+    )
     parser.add_argument("--output", default="page2context", help="Output folder (default: page2context)")
     parser.add_argument("--json",   action="store_true",    help="Emit JSON output (for AI callers)")
     args = parser.parse_args()
@@ -211,12 +222,76 @@ def extract_tiles(
         tile_img.save(tile_path)
         paths.append(tile_path)
     return paths
+
+
+def _compile_regex_or_exit(pattern: str | None) -> re.Pattern[str] | None:
+    if pattern is None:
+        return None
+    try:
+        return re.compile(pattern)
+    except re.error as exc:
+        _error_exit(
+            EXIT_BAD_ARGS,
+            f"Invalid --resources-regex value: {pattern!r}",
+            reason=str(exc),
+        )
+
+
+def _looks_downloadable_url(url: str) -> bool:
+    parsed = urlparse(url)
+    return parsed.scheme in {"http", "https"} and bool(parsed.netloc)
+
+
+def _extract_resource_candidates_from_html(html: str, base_url: str) -> set[str]:
+    candidates: set[str] = set()
+
+    for match in re.findall(r"(?:src|href)\s*=\s*['\"]([^'\"]+)['\"]", html, flags=re.IGNORECASE):
+        abs_url = urljoin(base_url, match.strip())
+        if _looks_downloadable_url(abs_url):
+            candidates.add(abs_url)
+
+    for match in re.findall(r"url\(([^)]+)\)", html, flags=re.IGNORECASE):
+        token = match.strip().strip('"\'')
+        abs_url = urljoin(base_url, token)
+        if _looks_downloadable_url(abs_url):
+            candidates.add(abs_url)
+
+    return candidates
+
+
+def _download_resources(
+    urls: list[str],
+    output_dir: pathlib.Path,
+    timeout_seconds: int = 20,
+) -> tuple[list[pathlib.Path], list[str]]:
+    downloaded: list[pathlib.Path] = []
+    failures: list[str] = []
+
+    for idx, url in enumerate(urls, start=1):
+        parsed = urlparse(url)
+        suffix = pathlib.Path(parsed.path).suffix.lower()
+        if not suffix or len(suffix) > 10 or not re.fullmatch(r"\.[a-z0-9]+", suffix):
+            suffix = ".bin"
+
+        target = output_dir / f"{OUTPUT_PREFIX}resource_{idx:03d}{suffix}"
+
+        req = Request(url, headers={"User-Agent": f"page2context/{__version__}"})
+        try:
+            with urlopen(req, timeout=timeout_seconds) as response:
+                data = response.read()
+            target.write_bytes(data)
+            downloaded.append(target)
+        except Exception as exc:
+            failures.append(f"{url} :: {exc}")
+
+    return downloaded, failures
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 def main():
     args = parse_args()
     viewport_w, viewport_h = parse_size(args.size)
+    resources_regex = _compile_regex_or_exit(args.resources_regex)
     output_dir = pathlib.Path(args.output)
     output_already_exists = output_dir.exists()
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -229,10 +304,21 @@ def main():
         crop_parsed = parse_crop(args.crop)
     # -- Browser capture -----------------------------------------------------
     html = ""
+    observed_urls: set[str] = set()
     try:
         with sync_playwright() as p:
             browser = p.chromium.launch()
             page    = browser.new_page()
+
+            def _track_request(req):
+                observed_urls.add(req.url)
+
+            def _track_response(resp):
+                observed_urls.add(resp.url)
+
+            page.on("request", _track_request)
+            page.on("response", _track_response)
+
             page.set_viewport_size({"width": viewport_w, "height": viewport_h})
             page.goto(args.url, wait_until="networkidle", timeout=30_000)
             page.screenshot(path=str(full_screenshot), full_page=True)
@@ -254,6 +340,20 @@ def main():
             tile_paths = extract_tiles(full_screenshot, output_dir, cols, rows, tiles)
         except Exception as exc:
             _error_exit(EXIT_IO_ERR, f"Crop failed: {exc}", screenshot=str(full_screenshot))
+
+    # -- Optional resource download (regex) --------------------------------
+    resource_paths: list[pathlib.Path] = []
+    resource_failures: list[str] = []
+    matched_resource_urls: list[str] = []
+    if resources_regex is not None:
+        candidates = _extract_resource_candidates_from_html(html, args.url)
+        for observed in observed_urls:
+            if _looks_downloadable_url(observed):
+                candidates.add(observed)
+
+        matched_resource_urls = sorted(url for url in candidates if resources_regex.search(url))
+        resource_paths, resource_failures = _download_resources(matched_resource_urls, output_dir)
+
     # -- Write Markdown ------------------------------------------------------
     md_path = output_dir / f"{OUTPUT_PREFIX}context.md"
     html_path = output_dir / f"{OUTPUT_PREFIX}html.html"
@@ -277,6 +377,20 @@ def main():
                 f.write(f"![{args.url}]({full_screenshot.name})\n\n")
             f.write("## DOM\n\n")
             f.write(f"See [{html_path.name}]({html_path.name}) for the full DOM HTML.\n")
+
+            if resources_regex is not None:
+                f.write("\n## Downloaded Resources\n\n")
+                f.write(f"Regex: `{args.resources_regex}`\n\n")
+                if resource_paths:
+                    for rp in resource_paths:
+                        f.write(f"- {rp.name}\n")
+                else:
+                    f.write("- No resources matched and downloaded.\n")
+
+                if resource_failures:
+                    f.write("\n### Resource download failures\n\n")
+                    for failure in resource_failures:
+                        f.write(f"- {failure}\n")
     except OSError as exc:
         _error_exit(EXIT_IO_ERR, f"Cannot write output file: {exc}", path=str(md_path))
     # -- Success output: emit created artifacts -----------------------------
@@ -291,6 +405,8 @@ def main():
     }
 
     created_files: list[pathlib.Path] = [full_screenshot, md_path, html_path]
+    if resource_paths:
+        created_files.extend(resource_paths)
     if tile_paths:
         created_files.extend(tile_paths)
 
@@ -306,6 +422,15 @@ def main():
             "tiles": tiles,
             "files": [str(p.resolve()) for p in tile_paths],
         }
+
+    if resources_regex is not None:
+        result["resources"] = {
+            "regex": args.resources_regex,
+            "matched_urls": matched_resource_urls,
+            "files": [str(p.resolve()) for p in resource_paths],
+            "failed": resource_failures,
+        }
+
     _success("Page captured successfully.", **result)
 if __name__ == "__main__":
     try:

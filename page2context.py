@@ -12,6 +12,7 @@ import re
 import sys
 import textwrap
 import traceback
+from typing import NoReturn
 from urllib.parse import urljoin, urlparse
 from urllib.request import Request, urlopen
 from playwright.sync_api import sync_playwright, Error as PlaywrightError
@@ -70,7 +71,7 @@ def _emit_text(payload: dict) -> None:
         print(payload.get("syntax", ""))
 def _success(message: str, **extra) -> None:
     _emit({"status": "success", "message": message, **extra})
-def _error_exit(code: int, message: str, **extra) -> None:
+def _error_exit(code: int, message: str, **extra) -> NoReturn:
     _emit({"status": "error", "exit_code": code, "message": message, **extra})
     sys.exit(code)
 # ---------------------------------------------------------------------------
@@ -146,25 +147,73 @@ def parse_args():
 # Helpers
 # ---------------------------------------------------------------------------
 def parse_size(size_str: str) -> tuple[int, int]:
-    try:
-        w, h = size_str.lower().split("x")
-        return int(w), int(h)
-    except ValueError:
+    parts = size_str.lower().split("x")
+    if len(parts) != 2:
         _error_exit(
             EXIT_BAD_ARGS,
             f"Invalid --size value: {size_str!r}. Expected format: WIDTHxHEIGHT (e.g. 1920x1080).",
         )
-def parse_crop(crop_str: str) -> tuple[int, int, list[int]]:
+        return 0, 0
+
     try:
-        grid_part, tiles_part = crop_str.split(":")
-        cols_str, rows_str = grid_part.lower().split("x")
-        cols, rows = int(cols_str), int(rows_str)
-        tiles = [int(t.strip()) for t in tiles_part.split(",")]
+        width = int(parts[0])
+        height = int(parts[1])
     except ValueError:
+        _error_exit(
+            EXIT_BAD_ARGS,
+            f"Invalid --size value: {size_str!r}. Expected numeric WIDTHxHEIGHT (e.g. 1920x1080).",
+        )
+        return 0, 0
+
+    return width, height
+
+
+def parse_crop(crop_str: str) -> tuple[int, int, list[int]]:
+    cols = 0
+    rows = 0
+    tiles: list[int] = []
+
+    parts = crop_str.split(":", 1)
+    if len(parts) != 2:
         _error_exit(
             EXIT_BAD_ARGS,
             f"Invalid --crop value: {crop_str!r}. Expected format: COLSxROWS:TILE[,TILE] (e.g. 3x9:1,27).",
         )
+        return 0, 0, []
+
+    grid_part, tiles_part = parts
+    grid_tokens = grid_part.lower().split("x", 1)
+    if len(grid_tokens) != 2:
+        _error_exit(
+            EXIT_BAD_ARGS,
+            f"Invalid --crop grid: {grid_part!r}. Expected COLSxROWS.",
+        )
+        return 0, 0, []
+
+    try:
+        cols = int(grid_tokens[0])
+        rows = int(grid_tokens[1])
+        tiles = [int(t.strip()) for t in tiles_part.split(",") if t.strip()]
+    except ValueError:
+        _error_exit(
+            EXIT_BAD_ARGS,
+            f"Invalid --crop value: {crop_str!r}. Tiles and grid values must be integers.",
+        )
+        return 0, 0, []
+
+    if cols < 1 or rows < 1:
+        _error_exit(
+            EXIT_BAD_ARGS,
+            f"Invalid --crop grid: {cols}x{rows}. COLS and ROWS must be >= 1.",
+        )
+        return 0, 0, []
+    if not tiles:
+        _error_exit(
+            EXIT_BAD_ARGS,
+            f"Invalid --crop tiles in {crop_str!r}. Provide at least one tile index.",
+        )
+        return 0, 0, []
+
     max_tile = cols * rows
     out_of_range = [t for t in tiles if t < 1 or t > max_tile]
     if out_of_range:
@@ -174,6 +223,7 @@ def parse_crop(crop_str: str) -> tuple[int, int, list[int]]:
             grid=f"{cols}x{rows}",
             valid_range=[1, max_tile],
         )
+        return 0, 0, []
     return cols, rows, tiles
 def _cleanup_prefixed_files(output_dir: pathlib.Path) -> None:
     """Remove previously generated files in output_dir to keep runs deterministic."""
@@ -197,14 +247,18 @@ def extract_tiles(
     p2cxt_tile_<N>.png inside output_dir. Returns the list of created paths.
     """
     try:
-        from PIL import Image
+        from PIL import Image as PILImage
     except ImportError:
+        PILImage = None
+
+    if PILImage is None:
         _error_exit(
             EXIT_DEP_ERR,
             "Pillow is required for --crop but is not installed.",
             fix="Run: pip install Pillow",
         )
-    img    = Image.open(full_screenshot)
+
+    img    = PILImage.open(full_screenshot)
     img_w, img_h = img.size
     tile_w = math.ceil(img_w / cols)
     tile_h = math.ceil(img_h / rows)

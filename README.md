@@ -65,6 +65,8 @@ Running with no arguments prints full usage help.
 | `--url "<URL>"` | ✅ | — | URL to capture |
 | `--size <WxH>` | ❌ | `1280x720` | Viewport size, e.g. `1920x1080` |
 | `--crop <spec>` | ❌ | *(none)* | Grid crop — see below |
+| `--console-log` | ❌ | *(flag)* | Capture browser console/page/navigation errors into `p2cxt_console.log` |
+| `--run-js-file <path>` | ❌ | *(none)* | Execute a JS file inside the opened page and wait for completion |
 | `--resources-regex <regex>` | ❌ | *(none)* | Download matching resources seen in HTML or browser traffic |
 | `--output <dir>` | ❌ | `page2context` | Output folder |
 | `--json` | ❌ | *(flag)* | Machine-readable JSON output (for AI callers) |
@@ -83,12 +85,18 @@ python page2context.py --url "https://example.com" --size 1920x1080
 # Capture only specific tiles of a long page
 python page2context.py --url "https://example.com" --crop "3x9:1,27"
 
+# Capture browser console/page errors
+python page2context.py --url "https://example.com" --console-log
+
+# Execute custom JavaScript inside the page and wait until it finishes
+python page2context.py --url "https://example.com" --run-js-file "./script.js"
+
 # Download only CSS/JS assets seen in source/network
 python page2context.py --url "https://example.com" --resources-regex "\\.(css|js)(\\?|$)"
 
 # All options — AI-friendly JSON output
 python page2context.py --url "https://example.com" \
-  --size 1440x900 --crop "2x4:1,2" \
+  --size 1440x900 --crop "2x4:1,2" --console-log --run-js-file "./script.js" \
   --resources-regex "\\.(css|js)(\\?|$)" --output my_capture --json
 ```
 
@@ -190,6 +198,34 @@ Regex: `\.(css|js)(\?|$)`
 - p2cxt_resource_001.css
 - p2cxt_resource_002.js
 ```
+### With `--console-log`
+
+```text
+page2context/
+├── p2cxt_context.md
+├── p2cxt_html.html
+├── p2cxt_screenshot.png
+└── p2cxt_console.log
+```
+
+`p2cxt_context.md` adds:
+
+```markdown
+## Console and Browser Errors
+
+See [p2cxt_console.log](p2cxt_console.log) for captured console output and browser/navigation errors.
+```
+
+### With `--run-js-file "./script.js"`
+
+`p2cxt_context.md` adds:
+
+```markdown
+## Executed JS
+
+- File: `script.js`
+- Result: `...`
+```
 
 ---
 
@@ -222,15 +258,22 @@ ERROR (3): Could not load URL: https://bad-url.invalid
   "context":    "page2context/p2cxt_context.md",
   "html":       "page2context/p2cxt_html.html",
   "screenshot": "page2context/p2cxt_screenshot.png",
+  "console_log": "page2context/p2cxt_console.log",
+  "script": {
+    "file": "script.js",
+    "result": "done"
+  },
   "output": [
     "/abs/path/page2context/p2cxt_screenshot.png",
     "/abs/path/page2context/p2cxt_context.md",
-    "/abs/path/page2context/p2cxt_html.html"
+    "/abs/path/page2context/p2cxt_html.html",
+    "/abs/path/page2context/p2cxt_console.log"
   ],
   "files": [
     "/abs/path/page2context/p2cxt_screenshot.png",
     "/abs/path/page2context/p2cxt_context.md",
-    "/abs/path/page2context/p2cxt_html.html"
+    "/abs/path/page2context/p2cxt_html.html",
+    "/abs/path/page2context/p2cxt_console.log"
   ],
   "resources": {
     "regex": "\\.(css|js)(\\?|$)",
@@ -253,6 +296,8 @@ ERROR (3): Could not load URL: https://bad-url.invalid
 ```
 
 > `resources` is only present when `--resources-regex` is used.
+> `console_log` is only present when `--console-log` is used.
+> `script` is only present when `--run-js-file` is used.
 > `output`/`files` always contain absolute artifact paths.
 
 ### Exit codes

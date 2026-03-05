@@ -91,14 +91,20 @@ SYNTAX_HELP = textwrap.dedent("""\
                                    COLS x ROWS grid and saves each listed
                                    tile as a separate image (p2cxt_tile_1.png, etc.)
                                    in the output folder.
+      --console-log             Save browser console/navigation errors to
+                                  p2cxt_console.log in the output folder.
+      --run-js-file <PATH>      Execute JavaScript file in the opened page
+                                  and wait for completion.
       --resources-regex <REGEX> Download resources whose URL matches REGEX
-                                  from HTML references and Playwright-observed traffic.
+                                   from HTML references and Playwright-observed traffic.
        --output <DIR>             Output folder          (default: page2context)
        --json                     Machine-readable JSON output (for AI callers)
     Examples:
       python page2context.py --url "https://example.com"
       python page2context.py --url "https://example.com" --size 1920x1080
       python page2context.py --url "https://example.com" --crop "3x9:1,27"
+      python page2context.py --url "https://example.com" --console-log
+      python page2context.py --url "https://example.com" --run-js-file "./script.js"
       python page2context.py --url "https://example.com" --resources-regex "\\.(css|js)(\\?|$)"
       python page2context.py --url "https://example.com" --size 1440x900 \\
                               --crop "2x4:1,2" --output my_capture
@@ -133,6 +139,16 @@ def parse_args():
     parser.add_argument("--url",    required=True,          help="URL to capture")
     parser.add_argument("--size",   default="1280x720",     help="Viewport WIDTHxHEIGHT")
     parser.add_argument("--crop",   default=None,           help="Grid crop COLSxROWS:TILE[,TILE]")
+    parser.add_argument(
+        "--console-log",
+        action="store_true",
+        help="Save browser console, page errors, and request failures to p2cxt_console.log.",
+    )
+    parser.add_argument(
+        "--run-js-file",
+        default=None,
+        help="Path to a JavaScript file to execute in the opened page and wait until it completes.",
+    )
     parser.add_argument(
         "--resources-regex",
         default=None,
@@ -210,6 +226,30 @@ def parse_crop(crop_str: str) -> tuple[int, int, list[int]]:
             valid_range=[1, max_tile],
         )
     return cols, rows, tiles
+
+
+def _load_js_file(path_str: str | None) -> tuple[pathlib.Path | None, str | None]:
+    if not path_str:
+        return None, None
+    js_path = pathlib.Path(path_str)
+    try:
+        return js_path, js_path.read_text(encoding="utf-8")
+    except OSError as exc:
+        _error_exit(EXIT_IO_ERR, f"Cannot read JS file: {exc}", path=str(js_path))
+
+
+def _write_console_log(path: pathlib.Path, lines: list[str]) -> None:
+    try:
+        with open(path, "w", encoding="utf-8") as f:
+            if lines:
+                f.write("\n".join(lines))
+                f.write("\n")
+            else:
+                f.write("[info] No console/page errors captured.\n")
+    except OSError as exc:
+        _error_exit(EXIT_IO_ERR, f"Cannot write console log: {exc}", path=str(path))
+
+
 def _cleanup_prefixed_files(output_dir: pathlib.Path) -> None:
     """Remove previously generated files in output_dir to keep runs deterministic."""
     try:
@@ -335,6 +375,7 @@ def main():
         _error_exit(EXIT_BAD_ARGS, exc.message, **exc.extra)
 
     resources_regex = _compile_regex_or_exit(args.resources_regex)
+    js_file_path, js_source = _load_js_file(args.run_js_file)
     output_dir = pathlib.Path(args.output)
     output_already_exists = output_dir.exists()
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -342,6 +383,7 @@ def main():
         _cleanup_prefixed_files(output_dir)
 
     full_screenshot = output_dir / f"{OUTPUT_PREFIX}screenshot.png"
+    console_log_path = output_dir / f"{OUTPUT_PREFIX}console.log"
     crop_parsed = None
     if args.crop:
         try:
@@ -350,11 +392,35 @@ def main():
             _error_exit(EXIT_BAD_ARGS, exc.message, **exc.extra)
     # -- Browser capture -----------------------------------------------------
     html = ""
+    script_result = None
+    console_lines: list[str] = []
+
+    def _log_console(line: str) -> None:
+        console_lines.append(line)
+
     observed_urls: set[str] = set()
     try:
         with sync_playwright() as p:
             browser = p.chromium.launch()
             page    = browser.new_page()
+
+            if args.console_log:
+                def _track_console(msg):
+                    _log_console(f"[console:{msg.type}] {msg.text}")
+
+                def _track_page_error(err):
+                    _log_console(f"[pageerror] {err}")
+
+                def _track_request_failed(req):
+                    failure = req.failure
+                    failure_text = failure["errorText"] if isinstance(failure, dict) and "errorText" in failure else "unknown"
+                    _log_console(f"[requestfailed] {req.url} :: {failure_text}")
+
+                page.on("console", _track_console)
+                page.on("pageerror", _track_page_error)
+                page.on("requestfailed", _track_request_failed)
+
+                browser.on("disconnected", lambda _browser: _log_console("[browser] disconnected"))
 
             def _track_request(req):
                 observed_urls.add(req.url)
@@ -367,10 +433,36 @@ def main():
 
             page.set_viewport_size({"width": viewport_w, "height": viewport_h})
             page.goto(args.url, wait_until="networkidle", timeout=30_000)
+
+            if js_source is not None:
+                try:
+                    script_result = page.evaluate(
+                        """async (source) => {
+                            const runner = new Function("return (async () => {\\n" + source + "\\n})()");
+                            return await runner();
+                        }""",
+                        js_source,
+                    )
+                    if args.console_log and js_file_path is not None:
+                        _log_console(f"[script] completed {js_file_path}")
+                except PlaywrightError as exc:
+                    if args.console_log:
+                        _log_console(f"[script:error] {exc}")
+                        _write_console_log(console_log_path, console_lines)
+                    _error_exit(
+                        EXIT_NAVIGATION_ERR,
+                        f"JS execution failed for file: {args.run_js_file}",
+                        reason=str(exc).splitlines()[0],
+                        js_file=str(js_file_path) if js_file_path else args.run_js_file,
+                    )
+
             page.screenshot(path=str(full_screenshot), full_page=True)
             html = page.content()
             browser.close()
     except PlaywrightError as exc:
+        if args.console_log:
+            _log_console(f"[navigation:error] {exc}")
+            _write_console_log(console_log_path, console_lines)
         raw = str(exc)
         if   "ERR_NAME_NOT_RESOLVED"    in raw: reason = "DNS resolution failed - host not found."
         elif "ERR_CONNECTION_REFUSED"   in raw: reason = "Connection refused - nothing listening at that address."
@@ -378,6 +470,8 @@ def main():
         elif "ERR_INTERNET_DISCONNECTED" in raw: reason = "No internet connection."
         else: reason = raw.splitlines()[0]
         _error_exit(EXIT_NAVIGATION_ERR, f"Could not load URL: {args.url}", reason=reason, url=args.url)
+    if args.console_log:
+        _write_console_log(console_log_path, console_lines)
     # -- Tile extraction (crop) ---------------------------------------------
     tile_paths: list[pathlib.Path] = []
     if crop_parsed:
@@ -424,6 +518,15 @@ def main():
             f.write("## DOM\n\n")
             f.write(f"See [{html_path.name}]({html_path.name}) for the full DOM HTML.\n")
 
+            if args.console_log:
+                f.write("\n## Console and Browser Errors\n\n")
+                f.write(f"See [{console_log_path.name}]({console_log_path.name}) for captured console output and browser/navigation errors.\n")
+
+            if js_file_path is not None:
+                f.write("\n## Executed JS\n\n")
+                f.write(f"- File: `{js_file_path}`\n")
+                f.write(f"- Result: `{script_result}`\n")
+
             if resources_regex is not None:
                 f.write("\n## Downloaded Resources\n\n")
                 f.write(f"Regex: `{args.resources_regex}`\n\n")
@@ -439,6 +542,7 @@ def main():
                         f.write(f"- {failure}\n")
     except OSError as exc:
         _error_exit(EXIT_IO_ERR, f"Cannot write output file: {exc}", path=str(md_path))
+
     # -- Success output: emit created artifacts -----------------------------
     result: dict = {
         "version":    __version__,
@@ -450,13 +554,23 @@ def main():
         "screenshot": str(full_screenshot),
     }
 
+    if args.console_log:
+        result["console_log"] = str(console_log_path)
+
+    if js_file_path is not None:
+        result["script"] = {
+            "file": str(js_file_path),
+            "result": script_result,
+        }
+
     created_files: list[pathlib.Path] = [full_screenshot, md_path, html_path]
+    if args.console_log:
+        created_files.append(console_log_path)
     if resource_paths:
         created_files.extend(resource_paths)
     if tile_paths:
         created_files.extend(tile_paths)
 
-    # Stable order + absolute paths for callers that need concrete artifacts.
     absolute_files = [str(path.resolve()) for path in created_files]
     result["output"] = absolute_files
     result["files"] = absolute_files
@@ -478,6 +592,8 @@ def main():
         }
 
     _success("Page captured successfully.", **result)
+
+
 if __name__ == "__main__":
     try:
         main()

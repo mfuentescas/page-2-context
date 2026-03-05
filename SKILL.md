@@ -20,7 +20,7 @@ plus a separate fixed DOM file `p2cxt_html.html`.
 Always add `--json` so you can parse the result reliably.
 
 ```bash
-python page2context.py --url "<URL>" [--size <WxH>] [--crop <COLSxROWS:TILES>] [--resources-regex <REGEX>] [--output <DIR>] --json
+python page2context.py --url "<URL>" [--size <WxH>] [--crop <COLSxROWS:TILES>] [--console-log] [--run-js-file <PATH>] [--resources-regex <REGEX>] [--output <DIR>] --json
 ```
 
 ### Parameters
@@ -30,6 +30,8 @@ python page2context.py --url "<URL>" [--size <WxH>] [--crop <COLSxROWS:TILES>] [
 | `--url` | ✅ | — | URL to capture (always quote it) |
 | `--size` | ❌ | `1280x720` | Viewport: `1920x1080`, `375x812`, etc. |
 | `--crop` | ❌ | *(none)* | Capture only specific grid tiles — see below |
+| `--console-log` | ❌ | *(flag)* | Save console/page/navigation errors to `p2cxt_console.log` |
+| `--run-js-file` | ❌ | *(none)* | Execute JS file in page and wait for completion |
 | `--resources-regex` | ❌ | *(none)* | Download resources whose URL matches regex from HTML + observed traffic |
 | `--output` | ❌ | `page2context` | Output folder name |
 | `--json` | ✅ | *(flag)* | Always pass this for structured output |
@@ -45,6 +47,8 @@ left-to-right, top-to-bottom from 1. Each tile is saved as a separate PNG.
 --crop "3x9:1,27"   → tile 1 (top-left) + tile 27 (bottom-right)
 --crop "2x4:1,2,3"  → first three tiles of a 2×4 grid
 --resources-regex "\\.(css|js)(\\?|$)" → download CSS/JS resources found in source/network
+--console-log → write console and browser/page/navigation errors to p2cxt_console.log
+--run-js-file "./script.js" → execute script in browser and wait until it finishes
 ```
 
 ## Output on success (exit 0)
@@ -60,15 +64,22 @@ left-to-right, top-to-bottom from 1. Each tile is saved as a separate PNG.
   "context":    "page2context/p2cxt_context.md",
   "html":       "page2context/p2cxt_html.html",
   "screenshot": "page2context/p2cxt_screenshot.png",
+  "console_log": "page2context/p2cxt_console.log",
+  "script": {
+    "file": "script.js",
+    "result": "done"
+  },
   "output": [
     "/abs/path/page2context/p2cxt_screenshot.png",
     "/abs/path/page2context/p2cxt_context.md",
-    "/abs/path/page2context/p2cxt_html.html"
+    "/abs/path/page2context/p2cxt_html.html",
+    "/abs/path/page2context/p2cxt_console.log"
   ],
   "files": [
     "/abs/path/page2context/p2cxt_screenshot.png",
     "/abs/path/page2context/p2cxt_context.md",
-    "/abs/path/page2context/p2cxt_html.html"
+    "/abs/path/page2context/p2cxt_html.html",
+    "/abs/path/page2context/p2cxt_console.log"
   ],
   "resources": {
     "regex": "\\.(css|js)(\\?|$)",
@@ -87,6 +98,8 @@ left-to-right, top-to-bottom from 1. Each tile is saved as a separate PNG.
 > `crop` is only present when `--crop` was used.
 > Without crop, `p2cxt_screenshot.png` is the full-page image.
 > `resources` is only present when `--resources-regex` is used.
+> `console_log` is only present when `--console-log` is used.
+> `script` is only present when `--run-js-file` is used.
 > `output`/`files` always contain absolute paths to created artifacts.
 
 ## Output on error
@@ -118,9 +131,11 @@ left-to-right, top-to-bottom from 1. Each tile is saved as a separate PNG.
 2. Parse output_dir from JSON
 3. Read <output_dir>/p2cxt_context.md for screenshots and structure
 4. Read <output_dir>/p2cxt_html.html for full DOM HTML
-5. If regex used, inspect `resources.files` and downloaded `p2cxt_resource_*` artifacts
-6. Use all artifacts to answer layout / CSS / structure questions
-7. Remember: existing `p2cxt_*` files are cleaned at run start in an existing output dir
+5. If enabled, inspect <output_dir>/p2cxt_console.log for console/navigation/browser errors
+6. If regex used, inspect `resources.files` and downloaded `p2cxt_resource_*` artifacts
+7. If JS used, inspect `script.result` and context section "Executed JS"
+8. Use all artifacts to answer layout / CSS / structure questions
+9. Remember: existing `p2cxt_*` files are cleaned at run start in an existing output dir
 ```
 
 ## Installation

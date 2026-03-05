@@ -37,6 +37,8 @@ python page2context.py \
   --url    "<URL>" \
   --size   "<WIDTHxHEIGHT>" \
   --crop   "<COLSxROWS:TILE[,TILE]>" \
+  --console-log \
+  --run-js-file "<PATH>" \
   --resources-regex "<REGEX>" \
   --output "<folder-name>" \
   --json
@@ -49,6 +51,8 @@ python page2context.py \
 | `--url` | ✅ | — | URL to capture (always quote it) |
 | `--size` | ❌ | `1280x720` | Viewport size, e.g. `1920x1080` or `375x812` |
 | `--crop` | ❌ | *(none)* | Grid crop spec — see below |
+| `--console-log` | ❌ | *(flag)* | Save console/page/navigation errors into `p2cxt_console.log` |
+| `--run-js-file` | ❌ | *(none)* | Execute JS file in browser page and wait until it finishes |
 | `--resources-regex` | ❌ | *(none)* | Download resources whose URL matches regex from HTML refs + observed traffic |
 | `--output` | ❌ | `page2context` | Output folder |
 | `--json` | ✅ for AI | *(flag)* | Always use when calling programmatically |
@@ -103,15 +107,22 @@ p2cxt_context.md:
   "context":    "page2context/p2cxt_context.md",
   "html":       "page2context/p2cxt_html.html",
   "screenshot": "page2context/p2cxt_screenshot.png",
+  "console_log": "page2context/p2cxt_console.log",
+  "script": {
+    "file": "script.js",
+    "result": "done"
+  },
   "output": [
     "/abs/path/page2context/p2cxt_screenshot.png",
     "/abs/path/page2context/p2cxt_context.md",
-    "/abs/path/page2context/p2cxt_html.html"
+    "/abs/path/page2context/p2cxt_html.html",
+    "/abs/path/page2context/p2cxt_console.log"
   ],
   "files": [
     "/abs/path/page2context/p2cxt_screenshot.png",
     "/abs/path/page2context/p2cxt_context.md",
-    "/abs/path/page2context/p2cxt_html.html"
+    "/abs/path/page2context/p2cxt_html.html",
+    "/abs/path/page2context/p2cxt_console.log"
   ],
   "resources": {
     "regex": "\\.(css|js)(\\?|$)",
@@ -130,6 +141,8 @@ p2cxt_context.md:
 > `crop` is only present when `--crop` was used.
 > `resources` is only present when `--resources-regex` was used.
 > `output`/`files` are always present and contain absolute artifact paths.
+> `console_log` is only present when `--console-log` is used.
+> `script` is only present when `--run-js-file` is used.
 
 ### On error
 
@@ -163,9 +176,11 @@ p2cxt_context.md:
 2. Check status == "success", else report reason to user and stop
 3. Read <output_dir>/p2cxt_context.md — contains screenshots + structure
 4. Read <output_dir>/p2cxt_html.html — contains full DOM HTML
-5. If provided, use `resources.files` artifacts (`p2cxt_resource_*`) for CSS/JS inspection
-6. Use all files to answer the user's question
-7. Be aware the tool cleans previous `p2cxt_*` files in an existing output dir
+5. If enabled, read <output_dir>/p2cxt_console.log for console/navigation/browser errors
+6. If provided, use `resources.files` artifacts (`p2cxt_resource_*`) for CSS/JS inspection
+7. If provided, inspect `script.result` from executed JS
+8. Use all files to answer the user's question
+9. Be aware the tool cleans previous `p2cxt_*` files in an existing output dir
 ```
 
 ---

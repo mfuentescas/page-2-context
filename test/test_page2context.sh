@@ -314,7 +314,26 @@ assert_eq "resources include one js" "$RES_JS" "1"
 assert_eq "resources payload paths exist on disk" "$RES_MISSING" "0"
 grep -q "p2cxt_resource_" "${OUT_DIR_RES}/p2cxt_context.md" && ok "context references downloaded resources" || fail "context missing downloaded resources references"
 
-info "Test 6: existing output dir cleans only p2cxt_* files"
+info "Test 6: console-log + run-js-file create log and execute script"
+OUT_DIR_CONSOLE_JS="${TMP_DIR}/run_console_js"
+CUSTOM_JS="${TMP_DIR}/custom_script.js"
+cat > "${CUSTOM_JS}" <<'JS'
+document.body.setAttribute("data-p2cxt-js", "done");
+console.log("custom js executed");
+return "done";
+JS
+run_and_capture OUT EC "${SCRIPT[@]}" --url "${TEST_URL}" --output "${OUT_DIR_CONSOLE_JS}" --console-log --run-js-file "${CUSTOM_JS}" --json
+assert_eq "console+js exit code is 0" "$EC" "0"
+assert_eq "console+js status=success" "$(json_field "$OUT" "status")" "success"
+assert_eq "console_log key present" "$(json_has_key "$OUT" "console_log")" "True"
+assert_eq "script key present" "$(json_has_key "$OUT" "script")" "True"
+assert_eq "console+js files has 4 files" "$(json_len "$OUT" "files")" "4"
+[[ -f "${OUT_DIR_CONSOLE_JS}/p2cxt_console.log" ]] && ok "p2cxt_console.log created" || fail "p2cxt_console.log missing"
+grep -q "p2cxt_console.log" "${OUT_DIR_CONSOLE_JS}/p2cxt_context.md" && ok "context references console log" || fail "context missing console log reference"
+grep -q "custom js executed" "${OUT_DIR_CONSOLE_JS}/p2cxt_console.log" && ok "console log captured custom script output" || fail "console log missing custom script output"
+grep -q "data-p2cxt-js=\"done\"" "${OUT_DIR_CONSOLE_JS}/p2cxt_html.html" && ok "custom JS modified DOM" || fail "custom JS DOM effect missing"
+
+info "Test 7: existing output dir cleans only p2cxt_* files"
 OUT_DIR_CLEAN="${TMP_DIR}/run_cleanup"
 mkdir -p "${OUT_DIR_CLEAN}"
 printf 'keep' > "${OUT_DIR_CLEAN}/keep.txt"
@@ -324,20 +343,20 @@ assert_eq "cleanup run exit code is 0" "$EC" "0"
 [[ -f "${OUT_DIR_CLEAN}/keep.txt" ]] && ok "non-prefixed file kept" || fail "non-prefixed file removed"
 [[ ! -e "${OUT_DIR_CLEAN}/p2cxt_old.tmp" ]] && ok "old prefixed file removed" || fail "old prefixed file not removed"
 
-info "Test 7: invalid --size returns exit_code=2 in json"
+info "Test 8: invalid --size returns exit_code=2 in json"
 run_and_capture OUT EC "${SCRIPT[@]}" --url "${TEST_URL}" --size "bad" --json
 assert_eq "invalid size process exit code is 2" "$EC" "2"
 assert_eq "invalid size status=error" "$(json_field "$OUT" "status")" "error"
 assert_eq "invalid size exit_code field=2" "$(json_field "$OUT" "exit_code")" "2"
 
-info "Test 8: out-of-range tile returns exit_code=2 and valid_range"
+info "Test 9: out-of-range tile returns exit_code=2 and valid_range"
 run_and_capture OUT EC "${SCRIPT[@]}" --url "${TEST_URL}" --crop "2x2:99" --json
 assert_eq "out-of-range process exit code is 2" "$EC" "2"
 assert_eq "out-of-range status=error" "$(json_field "$OUT" "status")" "error"
 assert_eq "out-of-range exit_code field=2" "$(json_field "$OUT" "exit_code")" "2"
 assert_eq "valid_range is present" "$(json_has_key "$OUT" "valid_range")" "True"
 
-info "Test 9: invalid --resources-regex returns exit_code=2 in json"
+info "Test 10: invalid --resources-regex returns exit_code=2 in json"
 run_and_capture OUT EC "${SCRIPT[@]}" --url "${TEST_URL}" --resources-regex "(" --json
 assert_eq "invalid regex process exit code is 2" "$EC" "2"
 assert_eq "invalid regex status=error" "$(json_field "$OUT" "status")" "error"

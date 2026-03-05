@@ -337,6 +337,13 @@ assert_eq "out-of-range status=error" "$(json_field "$OUT" "status")" "error"
 assert_eq "out-of-range exit_code field=2" "$(json_field "$OUT" "exit_code")" "2"
 assert_eq "valid_range is present" "$(json_has_key "$OUT" "valid_range")" "True"
 
+info "Test 9: invalid --resources-regex returns exit_code=2 in json"
+run_and_capture OUT EC "${SCRIPT[@]}" --url "${TEST_URL}" --resources-regex "(" --json
+assert_eq "invalid regex process exit code is 2" "$EC" "2"
+assert_eq "invalid regex status=error" "$(json_field "$OUT" "status")" "error"
+assert_eq "invalid regex exit_code field=2" "$(json_field "$OUT" "exit_code")" "2"
+assert_eq "invalid regex reason present" "$(json_has_key "$OUT" "reason")" "True"
+
 echo "------------------------------------"
 echo "Results: ${PASS} passed  ${FAIL} failed"
 echo "------------------------------------"

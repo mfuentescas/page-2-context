@@ -146,24 +146,27 @@ def parse_args():
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+class _CliArgError(Exception):
+    def __init__(self, message: str, **extra):
+        super().__init__(message)
+        self.message = message
+        self.extra = extra
+
+
 def parse_size(size_str: str) -> tuple[int, int]:
     parts = size_str.lower().split("x")
     if len(parts) != 2:
-        _error_exit(
-            EXIT_BAD_ARGS,
-            f"Invalid --size value: {size_str!r}. Expected format: WIDTHxHEIGHT (e.g. 1920x1080).",
+        raise _CliArgError(
+            f"Invalid --size value: {size_str!r}. Expected format: WIDTHxHEIGHT (e.g. 1920x1080)."
         )
-        return 0, 0
 
     try:
         width = int(parts[0])
         height = int(parts[1])
     except ValueError:
-        _error_exit(
-            EXIT_BAD_ARGS,
-            f"Invalid --size value: {size_str!r}. Expected numeric WIDTHxHEIGHT (e.g. 1920x1080).",
+        raise _CliArgError(
+            f"Invalid --size value: {size_str!r}. Expected numeric WIDTHxHEIGHT (e.g. 1920x1080)."
         )
-        return 0, 0
 
     return width, height
 
@@ -175,55 +178,37 @@ def parse_crop(crop_str: str) -> tuple[int, int, list[int]]:
 
     parts = crop_str.split(":", 1)
     if len(parts) != 2:
-        _error_exit(
-            EXIT_BAD_ARGS,
-            f"Invalid --crop value: {crop_str!r}. Expected format: COLSxROWS:TILE[,TILE] (e.g. 3x9:1,27).",
+        raise _CliArgError(
+            f"Invalid --crop value: {crop_str!r}. Expected format: COLSxROWS:TILE[,TILE] (e.g. 3x9:1,27)."
         )
-        return 0, 0, []
 
     grid_part, tiles_part = parts
     grid_tokens = grid_part.lower().split("x", 1)
     if len(grid_tokens) != 2:
-        _error_exit(
-            EXIT_BAD_ARGS,
-            f"Invalid --crop grid: {grid_part!r}. Expected COLSxROWS.",
-        )
-        return 0, 0, []
+        raise _CliArgError(f"Invalid --crop grid: {grid_part!r}. Expected COLSxROWS.")
 
     try:
         cols = int(grid_tokens[0])
         rows = int(grid_tokens[1])
         tiles = [int(t.strip()) for t in tiles_part.split(",") if t.strip()]
     except ValueError:
-        _error_exit(
-            EXIT_BAD_ARGS,
-            f"Invalid --crop value: {crop_str!r}. Tiles and grid values must be integers.",
+        raise _CliArgError(
+            f"Invalid --crop value: {crop_str!r}. Tiles and grid values must be integers."
         )
-        return 0, 0, []
 
     if cols < 1 or rows < 1:
-        _error_exit(
-            EXIT_BAD_ARGS,
-            f"Invalid --crop grid: {cols}x{rows}. COLS and ROWS must be >= 1.",
-        )
-        return 0, 0, []
+        raise _CliArgError(f"Invalid --crop grid: {cols}x{rows}. COLS and ROWS must be >= 1.")
     if not tiles:
-        _error_exit(
-            EXIT_BAD_ARGS,
-            f"Invalid --crop tiles in {crop_str!r}. Provide at least one tile index.",
-        )
-        return 0, 0, []
+        raise _CliArgError(f"Invalid --crop tiles in {crop_str!r}. Provide at least one tile index.")
 
     max_tile = cols * rows
     out_of_range = [t for t in tiles if t < 1 or t > max_tile]
     if out_of_range:
-        _error_exit(
-            EXIT_BAD_ARGS,
+        raise _CliArgError(
             f"Tile(s) {out_of_range} out of range for a {cols}x{rows} grid (valid: 1-{max_tile}).",
             grid=f"{cols}x{rows}",
             valid_range=[1, max_tile],
         )
-        return 0, 0, []
     return cols, rows, tiles
 def _cleanup_prefixed_files(output_dir: pathlib.Path) -> None:
     """Remove previously generated files in output_dir to keep runs deterministic."""
@@ -344,7 +329,11 @@ def _download_resources(
 # ---------------------------------------------------------------------------
 def main():
     args = parse_args()
-    viewport_w, viewport_h = parse_size(args.size)
+    try:
+        viewport_w, viewport_h = parse_size(args.size)
+    except _CliArgError as exc:
+        _error_exit(EXIT_BAD_ARGS, exc.message, **exc.extra)
+
     resources_regex = _compile_regex_or_exit(args.resources_regex)
     output_dir = pathlib.Path(args.output)
     output_already_exists = output_dir.exists()
@@ -355,7 +344,10 @@ def main():
     full_screenshot = output_dir / f"{OUTPUT_PREFIX}screenshot.png"
     crop_parsed = None
     if args.crop:
-        crop_parsed = parse_crop(args.crop)
+        try:
+            crop_parsed = parse_crop(args.crop)
+        except _CliArgError as exc:
+            _error_exit(EXIT_BAD_ARGS, exc.message, **exc.extra)
     # -- Browser capture -----------------------------------------------------
     html = ""
     observed_urls: set[str] = set()

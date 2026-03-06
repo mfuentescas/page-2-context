@@ -293,6 +293,12 @@ assert_eq "exit code is 2" "$EC" "2"
 [[ "$OUT" == *"--json"* ]] && ok "help contains --json" || fail "help missing --json"
 [[ "$OUT" == *"--chrome-profile-dir"* ]] && ok "help contains --chrome-profile-dir" || fail "help missing --chrome-profile-dir"
 
+info "Test 1b: --help prints syntax and exits 0"
+run_and_capture OUT EC "${SCRIPT[@]}" --help
+assert_eq "--help exit code is 0" "$EC" "0"
+[[ "$OUT" == *"Usage:"* ]] && ok "--help contains Usage" || fail "--help missing Usage"
+[[ "$OUT" == *"--clean-temp"* ]] && ok "--help contains --clean-temp" || fail "--help missing --clean-temp"
+
 info "Test 2: JSON success returns absolute output list and prefixed files"
 OUT_DIR="${TMP_DIR}/run_json"
 run_and_capture OUT EC "${SCRIPT[@]}" --url "${TEST_URL}" --output "${OUT_DIR}" --json
@@ -354,10 +360,38 @@ run_and_capture OUT EC "${SCRIPT[@]}" --url "${TEST_URL}" --output "${OUT_DIR_CL
 assert_eq "prep clean-only source exit code is 0" "$EC" "0"
 [[ -f "${OUT_DIR_CLEAN_ONLY_SRC}/p2cxt_screenshot.png" ]] && ok "clean-only source screenshot exists" || fail "clean-only source screenshot missing"
 
+# Prepare a real /tmp p2cxt_* directory with artifacts to ensure temp-root cleaning works.
+TMP_P2CXT_DIR="/tmp/p2cxt_test_clean_dir_${RANDOM}${RANDOM}"
+mkdir -p "$TMP_P2CXT_DIR"
+printf 'x' > "$TMP_P2CXT_DIR/p2cxt_html.html"
+printf 'x' > "$TMP_P2CXT_DIR/p2cxt_tile_3.png"
+
+# Text-mode clean-temp should print what it deleted and should not print chrome_profile_source.
+run_and_capture OUT_TEXT EC_TEXT "${SCRIPT[@]}" --clean-temp
+assert_eq "clean-temp only text exit code is 0" "$EC_TEXT" "0"
+[[ "$OUT_TEXT" == *"cleaned_files:"* ]] && ok "clean-temp text includes cleaned_files" || fail "clean-temp text missing cleaned_files"
+[[ "$OUT_TEXT" == *"${OUT_DIR_CLEAN_ONLY_SRC}/p2cxt_screenshot.png"* ]] && ok "clean-temp text lists deleted screenshot" || fail "clean-temp text did not list deleted screenshot"
+[[ "$OUT_TEXT" != *"chrome_profile_source:"* ]] && ok "clean-temp text omits chrome_profile_source" || fail "clean-temp text unexpectedly includes chrome_profile_source"
+
+# Temp-root sweep should have removed our /tmp artifacts (files) and possibly the directory if now empty.
+[[ ! -e "$TMP_P2CXT_DIR/p2cxt_html.html" ]] && ok "clean-temp removed /tmp p2cxt_html.html" || fail "clean-temp did not remove /tmp p2cxt_html.html"
+[[ ! -e "$TMP_P2CXT_DIR/p2cxt_tile_3.png" ]] && ok "clean-temp removed /tmp p2cxt_tile_3.png" || fail "clean-temp did not remove /tmp p2cxt_tile_3.png"
+if [[ -d "$TMP_P2CXT_DIR" ]]; then
+  if [[ -z "$(ls -A "$TMP_P2CXT_DIR" 2>/dev/null)" ]]; then
+    ok "clean-temp left /tmp p2cxt_* dir empty (will be removed in dir cleanup pass)"
+  else
+    fail "clean-temp left unexpected files in /tmp p2cxt_* dir"
+  fi
+else
+  ok "clean-temp removed empty /tmp p2cxt_* dir"
+fi
+
+# JSON clean-temp keeps structured fields.
 run_and_capture OUT EC "${SCRIPT[@]}" --clean-temp --json
 assert_eq "clean-temp only exit code is 0" "$EC" "0"
 assert_eq "clean-temp only status=success" "$(json_field "$OUT" "status")" "success"
 assert_eq "clean-temp only cleaned_files key present" "$(json_has_key "$OUT" "cleaned_files")" "True"
+assert_eq "clean-temp JSON includes temp_cleaned_files" "$(json_has_key "$OUT" "temp_cleaned_files")" "True"
 [[ ! -f "${OUT_DIR_CLEAN_ONLY_SRC}/p2cxt_screenshot.png" ]] && ok "clean-temp removed historical screenshot" || fail "clean-temp did not remove historical screenshot"
 
 info "Test 5: clean-temp with url cleans before capture and continues"
@@ -410,8 +444,8 @@ assert_eq "crop exit code is 0" "$EC" "0"
 assert_eq "crop status=success" "$(json_field "$OUT" "status")" "success"
 assert_eq "crop files has 5 files" "$(json_len "$OUT" "files")" "5"
 assert_eq "crop output has 5 files" "$(json_len "$OUT" "output")" "5"
-[[ -f "${OUT_DIR_CROP}/p2cxt_tile_1.png" ]] && ok "p2cxt_tile_1.png created" || fail "p2cxt_tile_1.png missing"
-[[ -f "${OUT_DIR_CROP}/p2cxt_tile_4.png" ]] && ok "p2cxt_tile_4.png created" || fail "p2cxt_tile_4.png missing"
+[[ -f "${OUT_DIR_CROP}/p2cxt_tile_1.png" ]] && ok "p2xt_tile_1.png created" || fail "p2xt_tile_1.png missing"
+[[ -f "${OUT_DIR_CROP}/p2cxt_tile_4.png" ]] && ok "p2xt_tile_4.png created" || fail "p2xt_tile_4.png missing"
 [[ -f "${OUT_DIR_CROP}/p2cxt_html.html" ]] && ok "p2cxt_html.html created (crop)" || fail "p2cxt_html.html missing (crop)"
 grep -q "p2cxt_tile_1.png" "${OUT_DIR_CROP}/p2cxt_context.md" && ok "context references tile 1" || fail "context missing tile 1"
 grep -q "p2cxt_html.html" "${OUT_DIR_CROP}/p2cxt_context.md" && ok "context references p2cxt_html.html (crop)" || fail "context missing p2cxt_html.html reference (crop)"

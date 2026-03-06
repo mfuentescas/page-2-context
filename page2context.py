@@ -18,6 +18,7 @@ from typing import NoReturn, Optional, Tuple
 from urllib.parse import urljoin, urlparse
 from urllib.request import Request
 from playwright.sync_api import sync_playwright, Error as PlaywrightError
+import time
 
 def _load_version() -> str:
     version_file = pathlib.Path(__file__).parent / "VERSION"
@@ -81,19 +82,73 @@ def _history_file_full_path() -> str:
     return str(_state_file().resolve())
 _json_mode: bool = False
 _profile_source_output: str = ""
+
 def _emit(payload: dict) -> None:
+    # Clean-only mode shouldn't include chrome_profile_source in output.
+    is_clean_only = payload.get("status") == "success" and payload.get("message") == "Historical temporary artifacts cleaned."
+
     if "history_file" not in payload:
         payload = {**payload, "history_file": _history_file_full_path()}
-    if "chrome_profile_source" not in payload:
+    if not is_clean_only and "chrome_profile_source" not in payload:
         payload = {**payload, "chrome_profile_source": _profile_source_output}
+
     if _json_mode:
         print(json.dumps(payload, ensure_ascii=False, indent=2), flush=True)
     else:
         _emit_text(payload)
+
+
 def _emit_text(payload: dict) -> None:
     status = payload.get("status", "")
     msg    = payload.get("message", "")
+
     if status == "success":
+        # Special-case: clean-only output should show what was deleted.
+        if msg == "Historical temporary artifacts cleaned.":
+            cleaned = payload.get("cleaned", [])
+            failed  = payload.get("failed", [])
+            cleaned_files = payload.get("cleaned_files", 0)
+
+            # Temp-root sweep extras
+            temp_cleaned = payload.get("temp_cleaned", [])
+            temp_failed = payload.get("temp_failed", [])
+            temp_cleaned_dirs = payload.get("temp_cleaned_dirs_list", [])
+
+            try:
+                cleaned_files_int = int(cleaned_files)
+            except Exception:
+                cleaned_files_int = 0
+
+            print(f"cleaned_files: {cleaned_files_int}")
+            if isinstance(cleaned, list) and cleaned:
+                print("cleaned:")
+                for p in cleaned:
+                    print(str(p))
+
+            # Show temp deletions (every file and every directory)
+            if isinstance(temp_cleaned, list) and temp_cleaned:
+                print("temp_cleaned:")
+                for p in temp_cleaned:
+                    print(str(p))
+            if isinstance(temp_cleaned_dirs, list) and temp_cleaned_dirs:
+                print("temp_cleaned_dirs:")
+                for d in temp_cleaned_dirs:
+                    print(str(d))
+
+            if isinstance(failed, list) and failed:
+                print("failed:")
+                for entry in failed:
+                    print(str(entry))
+            if isinstance(temp_failed, list) and temp_failed:
+                print("temp_failed:")
+                for entry in temp_failed:
+                    print(str(entry))
+
+            history_file = payload.get("history_file")
+            if history_file:
+                print(f"history_file: {history_file}")
+            return
+
         outputs = payload.get("output")
         if isinstance(outputs, list) and outputs:
             print("\n".join(str(p) for p in outputs))
@@ -179,6 +234,7 @@ SYNTAX_HELP = textwrap.dedent("""\
     Required:
       --url  "<URL>"                URL to capture (required unless using only --clean-temp)
     Optional:
+      --help                       Show this help and exit.
       --clean-temp                 Clean historical p2cxt temporary artifacts.
       --size  <WIDTHxHEIGHT>       Viewport size (default: 1280x720)
       --crop  <COLSxROWS:TILES>    Grid crop, e.g. "3x9:1,27"
@@ -197,6 +253,7 @@ SYNTAX_HELP = textwrap.dedent("""\
       --output <DIR>               Output folder (default: a new temp dir under /tmp)
       --json                       Machine-readable JSON output (for AI callers)
     Examples:
+      python3 page2context.py --help
       python3 page2context.py --url "https://example.com"
       python3 page2context.py --clean-temp
       python3 page2context.py --url "https://example.com" --chrome-profile-dir ""
@@ -213,13 +270,27 @@ class _TextArgumentParser(argparse.ArgumentParser):
                     hint="Run without arguments to see full usage syntax.")
 def parse_args():
     global _json_mode
+
+    # Implement a predictable --help that works even without other args.
+    if any(a in {"-h", "--help"} for a in sys.argv[1:]):
+        _json_mode = "--json" in sys.argv
+        _emit({"status": "info", "syntax": SYNTAX_HELP})
+        sys.exit(EXIT_OK)
+
     if len(sys.argv) == 1:
         _emit({"status": "info", "syntax": SYNTAX_HELP})
         sys.exit(EXIT_BAD_ARGS)
+
     _json_mode = "--json" in sys.argv
-    parser = _TextArgumentParser(prog="page2context",
-                                  description="Capture a webpage screenshot and DOM HTML into Markdown outputs.",
-                                  add_help=True)
+    parser = _TextArgumentParser(
+        prog="page2context",
+        description="Capture a webpage screenshot and DOM HTML into Markdown outputs.",
+        add_help=False,
+    )
+
+    # Add our own help flag (argparse's default help is disabled above).
+    parser.add_argument("-h", "--help", action="store_true", help="Show this help and exit.")
+
     parser.add_argument("--url",         required=False,       help="URL to capture")
     parser.add_argument("--clean-temp",  action="store_true",  help="Clean historical p2cxt artifacts.")
     parser.add_argument("--size",        default="1280x720",   help="Viewport WIDTHxHEIGHT")
@@ -672,15 +743,170 @@ def _browser_install_hint(exc: "PlaywrightError", browser_key: str) -> Optional[
     return None
 
 
+LOCK_FILE_NAME = "clean_temp.lock"
+DEFAULT_CLEAN_WAIT_SECONDS = 60
+LOCK_STALE_SECONDS = 6 * 60 * 60  # 6h safety
+
+
+def _lock_file_path() -> pathlib.Path:
+    # Always a concrete path under the state dir.
+    p = _state_dir() / LOCK_FILE_NAME
+    if p is None:  # defensive (should never happen)
+        raise RuntimeError("Internal error: lock file path is None")
+    return p
+
+
+def _acquire_clean_lock(wait_seconds: int = DEFAULT_CLEAN_WAIT_SECONDS, poll_seconds: float = 0.25) -> Optional[pathlib.Path]:
+    """Acquire a lock so --clean-temp doesn't race with another running instance.
+
+    This is intentionally a simple filesystem lock (exclusive create) stored in the state dir.
+    """
+    lock_path: pathlib.Path = _lock_file_path()
+    assert lock_path is not None
+    deadline = time.time() + max(0, int(wait_seconds))
+    while True:
+        try:
+            lock_path.parent.mkdir(parents=True, exist_ok=True)
+            fd = os.open(str(lock_path), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                f.write(f"pid={os.getpid()}\n")
+                f.write(f"started={time.time()}\n")
+            return lock_path
+        except FileExistsError:
+            # If lock looks stale, remove it.
+            try:
+                st = lock_path.stat()
+                if time.time() - st.st_mtime > LOCK_STALE_SECONDS:
+                    lock_path.unlink(missing_ok=True)
+                    continue
+            except OSError:
+                pass
+
+            if time.time() >= deadline:
+                _error_exit(
+                    EXIT_IO_ERR,
+                    "Timed out waiting for another page2context instance to finish (clean-temp lock).",
+                    hint=(
+                        "Another page2context run seems to be active. Wait and retry. "
+                        "If you're sure no run is active, delete the lock file: "
+                        f"{lock_path}"
+                    ),
+                )
+            time.sleep(poll_seconds)
+
+
+def _release_clean_lock(lock_path: Optional[pathlib.Path]) -> None:
+    if lock_path is None:
+        return
+    try:
+        lock_path.unlink(missing_ok=True)
+    except OSError:
+        pass
+
+
+def _is_system_temp_child(path: pathlib.Path) -> bool:
+    """Return True if `path` is inside the system temp directory (e.g. /tmp)."""
+    try:
+        tmp_root = pathlib.Path(tempfile.gettempdir()).resolve()
+        path.resolve().relative_to(tmp_root)
+        return True
+    except Exception:
+        return False
+
+
+def _clean_temp_root_p2cxt_artifacts() -> dict:
+    """Clean p2cxt artifacts under the system temp directory only.
+
+    Rules:
+      - Only look inside the system temp root (tempfile.gettempdir()).
+      - Only consider directories whose name starts with 'p2cxt_'.
+      - Inside those directories, delete files that start with OUTPUT_PREFIX (p2cxt_...).
+      - After file cleanup, remove any empty directories named 'p2cxt_*'.
+
+    Returns a dict with cleaned/failed counts and lists, similar to history cleanup.
+    """
+    tmp_root = pathlib.Path(tempfile.gettempdir()).resolve()
+    cleaned: list[str] = []
+    failed: list[str] = []
+
+    # 2.1) Delete files (recursively) under p2cxt_* dirs.
+    try:
+        candidates = [p for p in tmp_root.iterdir() if p.is_dir() and p.name.startswith("p2cxt_")]
+    except OSError as exc:
+        return {"temp_cleaned": [], "temp_failed": [f"{tmp_root} :: {exc}"], "temp_cleaned_files": 0, "temp_cleaned_dirs": 0}
+
+    for d in candidates:
+        # Safety: verify directory is truly under tmp_root.
+        if not _is_system_temp_child(d):
+            continue
+        try:
+            for file_path in d.rglob(f"{OUTPUT_PREFIX}*"):
+                try:
+                    if file_path.is_file() and file_path.name.startswith(OUTPUT_PREFIX):
+                        file_path.unlink()
+                        cleaned.append(str(file_path))
+                except OSError as exc:
+                    failed.append(f"{file_path} :: {exc}")
+        except OSError as exc:
+            failed.append(f"{d} :: {exc}")
+
+    # 2.2) Remove empty p2cxt_* directories (bottom-up).
+    cleaned_dirs: list[str] = []
+    for d in candidates:
+        try:
+            # Walk bottom-up to remove empty nested p2cxt_* dirs too.
+            for sub in sorted([p for p in d.rglob("*") if p.is_dir() and p.name.startswith("p2cxt_")], key=lambda p: len(str(p)), reverse=True):
+                if not _is_system_temp_child(sub):
+                    continue
+                try:
+                    if not any(sub.iterdir()):
+                        sub.rmdir()
+                        cleaned_dirs.append(str(sub))
+                except OSError:
+                    pass
+
+            if not any(d.iterdir()):
+                d.rmdir()
+                cleaned_dirs.append(str(d))
+        except OSError:
+            # Ignore non-empty or permission errors; failures are not critical.
+            continue
+
+    return {
+        "temp_cleaned": cleaned,
+        "temp_failed": failed,
+        "temp_cleaned_files": len(cleaned),
+        "temp_cleaned_dirs": len(cleaned_dirs),
+        "temp_cleaned_dirs_list": cleaned_dirs,
+    }
+
 def main() -> None:
     global _profile_source_output
     args = parse_args()
     clean_result = None
     if args.clean_temp:
-        clean_result = _clean_historical_artifacts()
+        lock_path: Optional[pathlib.Path] = None
+        try:
+            # 1) wait for other instances to finish
+            lock_path = _acquire_clean_lock()
+
+            # 2) clean historical list (state dir)
+            clean_result = _clean_historical_artifacts()
+
+            # 2) additionally scan temp root strictly (/tmp or platform temp)
+            temp_clean_result = _clean_temp_root_p2cxt_artifacts()
+        finally:
+            _release_clean_lock(lock_path)
+
         if not args.url:
-            _success("Historical temporary artifacts cleaned.", version=__version__,
-                     **clean_result, output=[], files=[], chrome_profile_source="")
+            _success(
+                "Historical temporary artifacts cleaned.",
+                version=__version__,
+                **clean_result,
+                **temp_clean_result,
+                output=[],
+                files=[],
+            )
             return
     try:
         viewport_w, viewport_h = parse_size(args.size)

@@ -277,6 +277,18 @@ p2cxt_context.md:
 11. Be aware the tool cleans previous `p2cxt_*` files in an existing output dir
 ```
 
+## Two practical user prompts (copy/paste)
+
+These are examples of what a user might type into a chat prompt to get an agent to run this skill.
+
+1) Capture a specific tile (useful for long pages)
+
+> Use `page2context` to capture tile #3 of a 4x3 grid from http://localhost:4200. Use a 1024x768 viewport and wait 5 seconds after the page loads.
+
+2) Capture using your current Chrome session (when login is required)
+
+> Use `page2context` using my current Chrome profile to capture image from http://localhost:4200. Use a 1024x768 viewport and wait 5 seconds after the page loads.
+
 ---
 
 ## Installation

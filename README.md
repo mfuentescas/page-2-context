@@ -536,6 +536,16 @@ the browser; only a temporary copy is used and it is deleted on exit.
    - *"What CSS class controls the hero section padding?"*
    - *"Rewrite this component so its layout matches tile 1."*
 
+### Two practical prompts you can copy/paste
+
+1) Capture a specific tile (useful for long pages)
+
+> Use `page2context` to capture tile #3 of a 4x3 grid from http://localhost:4200. Use a 1024x768 viewport and wait 5 seconds after the page loads.
+
+2) Capture using your current Chrome session (when login is required)
+
+> Use `page2context` using my current Chrome profile to capture image from http://localhost:4200. Use a 1024x768 viewport and wait 5 seconds after the page loads.
+
 ---
 
 ## AI skill integration

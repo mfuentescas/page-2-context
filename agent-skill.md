@@ -97,7 +97,7 @@ python3 page2context.py --url "<URL>" --webkit-profile-dir "" --json
 | `--run-js-file` | ❌ | *(none)* | Execute JS file in browser page and wait until it finishes |
 | `--post-load-wait-ms` | ❌ | `0` | Extra wait in milliseconds after page load and before `--run-js-file`/screenshot |
 | `--resources-regex` | ❌ | *(none)* | Download resources whose URL matches regex from HTML refs + observed traffic |
-| `--output` | ❌ | `page2context` | Output folder |
+| `--output` | ❌ | *(auto)* | Output folder. If omitted, a new unique temp directory is created (typically under `/tmp`). |
 | `--json` | ✅ for AI | *(flag)* | Always use when calling programmatically |
 
 ---
@@ -147,10 +147,10 @@ p2cxt_context.md:
   "url":        "https://example.com",
   "viewport":   "1280x720",
   "post_load_wait_ms": 1200,
-  "output_dir": "page2context",
-  "context":    "page2context/p2cxt_context.md",
-  "html":       "page2context/p2cxt_html.html",
-  "screenshot": "page2context/p2cxt_screenshot.png",
+  "output_dir": "/tmp/p2cxt_run_abcd1234",
+  "context":    "/tmp/p2cxt_run_abcd1234/p2cxt_context.md",
+  "html":       "/tmp/p2cxt_run_abcd1234/p2cxt_html.html",
+  "screenshot": "/tmp/p2cxt_run_abcd1234/p2cxt_screenshot.png",
   "chrome_profile_source": "/home/user/.config/google-chrome",
   "cleanup_before_run": {
     "cleaned": ["/abs/path/old/p2cxt_context.md"],

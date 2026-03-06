@@ -102,7 +102,7 @@ Running with no arguments prints full usage help.
 | `--run-js-file <path>` | ❌ | *(none)* | Execute a JS file inside the opened page and wait for completion |
 | `--post-load-wait-ms <ms>` | ❌ | `0` | Extra wait after page load and before `--run-js-file`/screenshot (useful for animations) |
 | `--resources-regex <regex>` | ❌ | *(none)* | Download matching resources seen in HTML or browser traffic |
-| `--output <dir>` | ❌ | `page2context` | Output folder |
+| `--output <dir>` | ❌ | *(auto)* | Output folder. If omitted, a **new unique temp directory** is created (typically under `/tmp`). |
 | `--json` | ❌ | *(flag)* | Machine-readable JSON output (for AI callers) |
 
 ---
@@ -111,7 +111,11 @@ Running with no arguments prints full usage help.
 
 ```bash
 # Basic capture → prints absolute created artifact paths
+# (writes into a new unique temp folder by default)
 python3 page2context.py --url "http://localhost:4200/"
+
+# Write outputs into a stable folder you control
+python3 page2context.py --url "http://localhost:4200/" --output page2context
 
 # Clean only historical temporary artifacts (no --url needed)
 python3 page2context.py --clean-temp
@@ -209,10 +213,20 @@ Each tile becomes its own PNG file and its own numbered section in `p2cxt_contex
 
 This history is used by `--clean-temp` to remove previously generated `p2cxt_*` files.
 
+### Default output directory
+
+If you **don’t** pass `--output`, each run writes into a **new unique directory** under your system temp folder (typically `/tmp` on Linux), for example:
+
+- `/tmp/p2cxt_run_abcd1234/`
+
+This avoids clobbering previous runs and keeps your project tree clean.
+
+If you want a stable folder (e.g. to check artifacts into a bug report), pass `--output <dir>`.
+
 ### Without `--crop`
 
-```
-page2context/
+```text
+<output_dir>/
 ├── p2cxt_context.md      ← markdown with screenshot + reference to DOM file
 ├── p2cxt_html.html       ← full downloaded DOM HTML
 └── p2cxt_screenshot.png  ← full-page screenshot

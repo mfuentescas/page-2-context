@@ -60,6 +60,84 @@ def _is_private_host(host: str) -> bool:
         # that would require a blocking lookup. We block the most common cases.
         lower = host.lower()
         return lower == "localhost" or lower.endswith(".local") or lower.endswith(".internal")
+
+
+# ---------------------------------------------------------------------------
+# URL Safety / allowlist policy
+# ---------------------------------------------------------------------------
+
+def _host_is_local_allowed_default(hostname: str) -> bool:
+    """True if hostname is allowed without requiring --allow-external-urls.
+
+    Default policy is intentionally conservative:
+      - allow: localhost/127.0.0.1/::1
+      - allow: IP literals that are private/loopback/link-local
+      - do NOT DNS-resolve arbitrary hostnames
+    """
+    host = (hostname or "").strip().strip("[]")
+    if not host:
+        return False
+
+    lower = host.lower()
+    if lower == "localhost":
+        return True
+
+    try:
+        ip = ipaddress.ip_address(host)
+        return bool(ip.is_private or ip.is_loopback or ip.is_link_local)
+    except ValueError:
+        return False
+
+
+def _compile_allow_external_regex_or_exit(pattern: Optional[str]) -> Optional["re.Pattern[str]"]:
+    """Compile allow-external regex; empty string means allow-all."""
+    if pattern is None or pattern == "":
+        return None
+    try:
+        return re.compile(pattern)
+    except re.error as exc:
+        _error_exit(EXIT_BAD_ARGS, f"Invalid --allow-external-urls value: {pattern!r}", reason=str(exc))
+
+
+def _external_url_allowed(url: str, regex: Optional["re.Pattern[str]"], allow_all_external: bool) -> bool:
+    if allow_all_external:
+        return True
+    if regex is None:
+        return False
+    return regex.search(url) is not None
+
+
+def _validate_target_url_or_exit(url: str, allow_external_raw: Optional[str]) -> None:
+    """Validate --url against the local-only default policy unless explicitly allowed."""
+    parsed = urlparse(url)
+    host = parsed.hostname or ""
+
+    allow_all_external = allow_external_raw is not None and allow_external_raw == ""
+    allow_regex = _compile_allow_external_regex_or_exit(allow_external_raw)
+
+    if _host_is_local_allowed_default(host):
+        return
+
+    if allow_external_raw is None:
+        _error_exit(
+            EXIT_BAD_ARGS,
+            "External URLs are disabled by default. Only localhost/127.0.0.1/::1 and local/private IPs are allowed for --url.",
+            hint=(
+                "If you really need to capture an external site, pass --allow-external-urls. "
+                "For safer use, pass a regex to restrict which external URLs are allowed (e.g. --allow-external-urls \"^https://example\\.com/\")."
+            ),
+            url=url,
+        )
+
+    if not _external_url_allowed(url, allow_regex, allow_all_external):
+        _error_exit(
+            EXIT_BAD_ARGS,
+            "External URL does not match --allow-external-urls policy.",
+            hint="Adjust --allow-external-urls regex or pass an empty value to allow all external URLs.",
+            url=url,
+        )
+
+
 PROFILE_ARG_TO_KEY: dict[str, str] = {
     "chrome_profile_dir":   "chrome",
     "edge_profile_dir":     "edge",
@@ -91,6 +169,10 @@ def _emit(payload: dict) -> None:
         payload = {**payload, "history_file": _history_file_full_path()}
     if not is_clean_only and "chrome_profile_source" not in payload:
         payload = {**payload, "chrome_profile_source": _profile_source_output}
+    # Always include the real profile source directory used for navigation when a profile flag is used.
+    # (This is the source profile on disk, not the temp copy.)
+    if not is_clean_only and "browser_profile_source" not in payload:
+        payload = {**payload, "browser_profile_source": _profile_source_output}
 
     if _json_mode:
         print(json.dumps(payload, ensure_ascii=False, indent=2), flush=True)
@@ -154,6 +236,9 @@ def _emit_text(payload: dict) -> None:
             print("\n".join(str(p) for p in outputs))
         else:
             print(payload.get("output_dir", ""))
+        if "browser_profile_source" in payload:
+            print(f"browser_profile_source: {payload.get('browser_profile_source', '')}")
+        # Backward-compat line (existing integrations may parse it)
         if "chrome_profile_source" in payload:
             print(f"chrome_profile_source: {payload.get('chrome_profile_source', '')}")
         history_file = payload.get("history_file")
@@ -170,6 +255,8 @@ def _emit_text(payload: dict) -> None:
             print(f"  valid tile range: {r[0]}-{r[1]}", file=sys.stderr)
         if "detail" in payload:
             print(f"  detail: {payload['detail']}", file=sys.stderr)
+        if "browser_profile_source" in payload:
+            print(f"  browser_profile_source: {payload.get('browser_profile_source', '')}", file=sys.stderr)
         if "chrome_profile_source" in payload:
             print(f"  chrome_profile_source: {payload.get('chrome_profile_source', '')}", file=sys.stderr)
         history_file = payload.get("history_file")
@@ -236,6 +323,11 @@ SYNTAX_HELP = textwrap.dedent("""\
     Optional:
       --help                       Show this help and exit.
       --clean-temp                 Clean historical p2cxt temporary artifacts.
+      --allow-external-urls [REGEX]
+                                   Allow external (non-localhost/non-private IP) URLs for --url and resource downloads.
+                                   - If omitted: external URLs are blocked (default is local-only).
+                                   - If provided as empty string: allow ALL external URLs.
+                                   - If REGEX provided: allow only external URLs whose full URL matches REGEX.
       --size  <WIDTHxHEIGHT>       Viewport size (default: 1280x720)
       --crop  <COLSxROWS:TILES>    Grid crop, e.g. "3x9:1,27"
       --console-log                Save browser console/navigation errors to p2cxt_console.log.
@@ -293,6 +385,17 @@ def parse_args():
 
     parser.add_argument("--url",         required=False,       help="URL to capture")
     parser.add_argument("--clean-temp",  action="store_true",  help="Clean historical p2cxt artifacts.")
+    parser.add_argument(
+        "--allow-external-urls",
+        nargs="?",
+        const="",
+        default=None,
+        help=(
+            "Allow external URLs for --url and resource downloads. "
+            "If omitted, only localhost/127.0.0.1/::1 and local/private IPs are allowed. "
+            "Pass empty to allow all external URLs, or provide a regex to allow only matching URLs."
+        ),
+    )
     parser.add_argument("--size",        default="1280x720",   help="Viewport WIDTHxHEIGHT")
     parser.add_argument("--crop",        default=None,         help="Grid crop COLSxROWS:TILE[,TILE]")
     parser.add_argument("--console-log", action="store_true",  help="Save browser console/errors to p2cxt_console.log.")
@@ -324,6 +427,10 @@ def parse_args():
             _error_exit(EXIT_BAD_ARGS,
                         f"Invalid --url scheme: {parsed_url.scheme!r}. Only http and https are allowed.",
                         hint="Use --url \"http://...\" or --url \"https://...\"")
+
+        # Enforce local-only policy unless explicitly allowed.
+        _validate_target_url_or_exit(args.url, args.allow_external_urls)
+
     return args
 class _CliArgError(Exception):
     def __init__(self, message: str, **extra):
@@ -621,9 +728,17 @@ def _extract_resource_candidates_from_html(html: str, base_url: str) -> set[str]
         if _looks_downloadable_url(abs_url):
             candidates.add(abs_url)
     return candidates
-def _download_resources(urls: list[str], output_dir: pathlib.Path,
-                        timeout_seconds: int = 20,
-                        allowed_host: str = "") -> tuple[list[pathlib.Path], list[str]]:
+def _download_resources(
+    urls: list[str],
+    output_dir: pathlib.Path,
+    timeout_seconds: int = 20,
+    allowed_host: str = "",
+    allow_external_raw: Optional[str] = None,
+) -> tuple[list[pathlib.Path], list[str], list[str]]:
+    """Download resources.
+
+    Returns: (downloaded_paths, failures, skipped_blocked)
+    """
     import urllib.request as _urllib_req
 
     # Security: custom opener that does NOT follow redirects, to prevent SSRF via open redirects.
@@ -632,11 +747,17 @@ def _download_resources(urls: list[str], output_dir: pathlib.Path,
             return None  # Block all redirects
 
     opener = _urllib_req.build_opener(_NoRedirectHandler)
+
+    allow_all_external = allow_external_raw is not None and allow_external_raw == ""
+    allow_regex = _compile_allow_external_regex_or_exit(allow_external_raw)
+
     # Normalise allowed_host for comparison (strip port)
     allowed_host_norm = (allowed_host or "").lower().split(":")[0]
 
     downloaded: list[pathlib.Path] = []
     failures: list[str] = []
+    skipped: list[str] = []
+
     for idx, url in enumerate(urls, start=1):
         parsed = urlparse(url)
 
@@ -645,9 +766,19 @@ def _download_resources(urls: list[str], output_dir: pathlib.Path,
             failures.append(f"{url} :: blocked: scheme '{parsed.scheme}' not allowed")
             continue
 
+        resource_host = (parsed.hostname or "").lower()
+
+        # External URL policy (applies even if host isn't private).
+        if resource_host and not _host_is_local_allowed_default(resource_host):
+            # For resources, we also allow the same-host-as-target as a convenience, but it still
+            # counts as external unless explicitly allowed.
+            if resource_host != allowed_host_norm:
+                if not _external_url_allowed(url, allow_regex, allow_all_external):
+                    skipped.append(url)
+                    continue
+
         # Security: block requests to private/loopback/link-local hosts (SSRF protection).
         # Exception: the host of the target --url is always trusted (user navigated there explicitly).
-        resource_host = (parsed.hostname or "").lower()
         if resource_host != allowed_host_norm and _is_private_host(resource_host):
             failures.append(f"{url} :: blocked: private/internal host")
             continue
@@ -659,7 +790,6 @@ def _download_resources(urls: list[str], output_dir: pathlib.Path,
         req = Request(url, headers={"User-Agent": f"page2context/{__version__}"})
         try:
             with opener.open(req, timeout=timeout_seconds) as response:
-                # Security: enforce max download size to prevent memory/disk exhaustion.
                 data = response.read(RESOURCE_MAX_BYTES + 1)
                 if len(data) > RESOURCE_MAX_BYTES:
                     failures.append(f"{url} :: blocked: response exceeds {RESOURCE_MAX_BYTES // (1024*1024)} MB limit")
@@ -668,7 +798,9 @@ def _download_resources(urls: list[str], output_dir: pathlib.Path,
             downloaded.append(target)
         except Exception as exc:
             failures.append(f"{url} :: {exc}")
-    return downloaded, failures
+
+    return downloaded, failures, skipped
+
 # ---------------------------------------------------------------------------
 # State management
 # ---------------------------------------------------------------------------
@@ -1072,6 +1204,7 @@ def main() -> None:
     # -- Optional resource download ----------------------------------------
     resource_paths:       list[pathlib.Path] = []
     resource_failures:    list[str]          = []
+    resource_skipped:     list[str]          = []
     matched_resource_urls: list[str]         = []
     if resources_regex is not None:
         candidates = _extract_resource_candidates_from_html(html, args.url)
@@ -1079,9 +1212,12 @@ def main() -> None:
             if _looks_downloadable_url(obs):
                 candidates.add(obs)
         matched_resource_urls = sorted(u for u in candidates if resources_regex.search(u))
-        resource_paths, resource_failures = _download_resources(
-            matched_resource_urls, output_dir,
-            allowed_host=urlparse(args.url).hostname or "")
+        resource_paths, resource_failures, resource_skipped = _download_resources(
+            matched_resource_urls,
+            output_dir,
+            allowed_host=urlparse(args.url).hostname or "",
+            allow_external_raw=args.allow_external_urls,
+        )
     # -- Write Markdown ----------------------------------------------------
     md_path   = output_dir / f"{OUTPUT_PREFIX}context.md"
     html_path = output_dir / f"{OUTPUT_PREFIX}html.html"
@@ -1122,6 +1258,10 @@ def main() -> None:
                     f.write(f"- {rp.name}\n")
                 if not resource_paths:
                     f.write("- No resources matched and downloaded.\n")
+                if resource_skipped:
+                    f.write("\n### Skipped (external URLs blocked)\n\n")
+                    for u in resource_skipped:
+                        f.write(f"- {u}\n")
                 if resource_failures:
                     f.write("\n### Resource download failures\n\n")
                     for failure in resource_failures:
@@ -1143,6 +1283,9 @@ def main() -> None:
         "context":              str(md_path),
         "html":                 str(html_path),
         "screenshot":           str(full_screenshot),
+        # Always: the real profile source used for navigation (any browser), or "".
+        "browser_profile_source": str(profile_source_dir) if profile_source_dir is not None else "",
+        # Backward compatibility: keep chrome_profile_source behavior (only populated in chrome mode)
         "chrome_profile_source": chrome_profile_source_value,
     }
     if clean_result is not None:
@@ -1188,6 +1331,8 @@ def main() -> None:
             "matched_urls": matched_resource_urls,
             "files":        [str(p.resolve()) for p in resource_paths],
             "failed":       resource_failures,
+            "skipped":      resource_skipped,
+            "skip_reason":  "external URLs blocked by default; use --allow-external-urls to permit",
         }
     _success("Page captured successfully.", **result)
 if __name__ == "__main__":

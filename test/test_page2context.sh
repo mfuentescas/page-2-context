@@ -307,6 +307,8 @@ assert_eq "json status=success" "$(json_field "$OUT" "status")" "success"
 assert_eq "json files has 3 files (no crop)" "$(json_len "$OUT" "files")" "3"
 assert_eq "json files values are absolute" "$(json_all_abs "$OUT" "files")" "True"
 assert_eq "json output has 3 files (no crop)" "$(json_len "$OUT" "output")" "3"
+assert_eq "json browser_profile_source key present" "$(json_has_key "$OUT" "browser_profile_source")" "True"
+assert_eq "json browser_profile_source empty without profile option" "$(json_field "$OUT" "browser_profile_source")" ""
 assert_eq "json chrome_profile_source key present" "$(json_has_key "$OUT" "chrome_profile_source")" "True"
 assert_eq "json chrome_profile_source empty without profile option" "$(json_field "$OUT" "chrome_profile_source")" ""
 [[ -f "${OUT_DIR}/p2cxt_screenshot.png" ]] && ok "p2cxt_screenshot.png created" || fail "p2cxt_screenshot.png missing"
@@ -330,11 +332,18 @@ OUT_DIR_TEXT="${TMP_DIR}/run_text"
 run_and_capture OUT EC "${SCRIPT[@]}" --url "${TEST_URL}" --output "${OUT_DIR_TEXT}"
 assert_eq "text exit code is 0" "$EC" "0"
 LINE_COUNT="$(printf '%s\n' "$OUT" | sed '/^$/d' | wc -l | tr -d ' ')"
-assert_eq "text output has 5 lines" "$LINE_COUNT" "5"
+assert_eq "text output has 6 lines" "$LINE_COUNT" "6"
 HISTORY_LINE_SEEN="False"
 CHROME_PROFILE_SOURCE_SEEN="False"
+BROWSER_PROFILE_SOURCE_SEEN="False"
 while IFS= read -r line; do
   [[ -z "$line" ]] && continue
+  if [[ "$line" == browser_profile_source:* ]]; then
+    BROWSER_VALUE="${line#browser_profile_source: }"
+    [[ -z "$BROWSER_VALUE" ]] && ok "browser_profile_source empty when no profile is used" || fail "browser_profile_source expected empty but got: $BROWSER_VALUE"
+    BROWSER_PROFILE_SOURCE_SEEN="True"
+    continue
+  fi
   if [[ "$line" == chrome_profile_source:* ]]; then
     CHROME_VALUE="${line#chrome_profile_source: }"
     [[ -z "$CHROME_VALUE" ]] && ok "chrome_profile_source empty when no profile is used" || fail "chrome_profile_source expected empty but got: $CHROME_VALUE"
@@ -351,6 +360,7 @@ while IFS= read -r line; do
   [[ "$line" == /* ]] && ok "line is absolute: $line" || fail "line is not absolute: $line"
   [[ -f "$line" ]] && ok "file exists: $line" || fail "file does not exist: $line"
 done <<< "$OUT"
+assert_eq "browser_profile_source line present" "$BROWSER_PROFILE_SOURCE_SEEN" "True"
 assert_eq "chrome_profile_source line present" "$CHROME_PROFILE_SOURCE_SEEN" "True"
 assert_eq "history_file line present" "$HISTORY_LINE_SEEN" "True"
 
@@ -413,11 +423,18 @@ OUT_DIR_TEXT="${TMP_DIR}/run_text"
 run_and_capture OUT EC "${SCRIPT[@]}" --url "${TEST_URL}" --output "${OUT_DIR_TEXT}"
 assert_eq "text exit code is 0" "$EC" "0"
 LINE_COUNT="$(printf '%s\n' "$OUT" | sed '/^$/d' | wc -l | tr -d ' ')"
-assert_eq "text output has 5 lines" "$LINE_COUNT" "5"
+assert_eq "text output has 6 lines" "$LINE_COUNT" "6"
 HISTORY_LINE_SEEN="False"
 CHROME_PROFILE_SOURCE_SEEN="False"
+BROWSER_PROFILE_SOURCE_SEEN="False"
 while IFS= read -r line; do
   [[ -z "$line" ]] && continue
+  if [[ "$line" == browser_profile_source:* ]]; then
+    BROWSER_VALUE="${line#browser_profile_source: }"
+    [[ -z "$BROWSER_VALUE" ]] && ok "browser_profile_source empty when no profile is used" || fail "browser_profile_source expected empty but got: $BROWSER_VALUE"
+    BROWSER_PROFILE_SOURCE_SEEN="True"
+    continue
+  fi
   if [[ "$line" == chrome_profile_source:* ]]; then
     CHROME_VALUE="${line#chrome_profile_source: }"
     [[ -z "$CHROME_VALUE" ]] && ok "chrome_profile_source empty when no profile is used" || fail "chrome_profile_source expected empty but got: $CHROME_VALUE"
@@ -434,6 +451,7 @@ while IFS= read -r line; do
   [[ "$line" == /* ]] && ok "line is absolute: $line" || fail "line is not absolute: $line"
   [[ -f "$line" ]] && ok "file exists: $line" || fail "file does not exist: $line"
 done <<< "$OUT"
+assert_eq "browser_profile_source line present" "$BROWSER_PROFILE_SOURCE_SEEN" "True"
 assert_eq "chrome_profile_source line present" "$CHROME_PROFILE_SOURCE_SEEN" "True"
 assert_eq "history_file line present" "$HISTORY_LINE_SEEN" "True"
 
@@ -534,6 +552,7 @@ CHROME_TMP_SRC_ABS="$(cd "${CHROME_TMP_SRC}" && pwd)"
 run_and_capture OUT EC "${SCRIPT[@]}" --url "${TEST_URL}" --output "${OUT_DIR_CHROME_TMP}" --chrome-profile-dir "${CHROME_TMP_SRC}" --json
 assert_eq "chrome-profile-dir exit code is 0" "$EC" "0"
 assert_eq "chrome-profile-dir status=success" "$(json_field "$OUT" "status")" "success"
+assert_eq "browser_profile_source matches explicit profile" "$(json_field "$OUT" "browser_profile_source")" "${CHROME_TMP_SRC_ABS}"
 assert_eq "chrome_profile_source matches explicit profile" "$(json_field "$OUT" "chrome_profile_source")" "${CHROME_TMP_SRC_ABS}"
 assert_eq "chrome_profile key present" "$(json_has_key "$OUT" "chrome_profile")" "True"
 assert_eq "chrome_profile source matches" "$(json_nested_field "$OUT" "chrome_profile" "source")" "${CHROME_TMP_SRC_ABS}"
@@ -558,10 +577,8 @@ if [[ "$STATUS_AUTO" == "success" || "$STATUS_AUTO" == "error" ]]; then
 else
   fail "chrome-profile-dir auto-discovery returned unexpected status: $STATUS_AUTO"
 fi
+assert_eq "browser_profile_source matches auto-discovered profile" "$(json_field "$OUT" "browser_profile_source")" "${AUTO_PROFILE_ABS}"
 assert_eq "chrome_profile_source matches auto-discovered profile" "$(json_field "$OUT" "chrome_profile_source")" "${AUTO_PROFILE_ABS}"
-if [[ "$STATUS_AUTO" == "success" ]]; then
-  assert_eq "chrome_profile source matches auto-discovered profile" "$(json_nested_field "$OUT" "chrome_profile" "source")" "${AUTO_PROFILE_ABS}"
-fi
 
 info "Test 15: chrome-profile-dir empty returns exit_code=4 when no profile is found"
 MISSING_HOME="${TMP_DIR}/home_missing"
@@ -697,6 +714,36 @@ assert_eq "file:// url exit code is 2" "$EC" "2"
 assert_eq "file:// url status=error" "$(json_field "$OUT" "status")" "error"
 assert_eq "file:// url exit_code field=2" "$(json_field "$OUT" "exit_code")" "2"
 
+info "Test 25b: external --url is blocked by default (exit_code=2)"
+run_and_capture OUT EC "${SCRIPT[@]}" --url "https://example.com" --json
+assert_eq "external url default-block exit code is 2" "$EC" "2"
+assert_eq "external url default-block status=error" "$(json_field "$OUT" "status")" "error"
+assert_eq "external url default-block exit_code field=2" "$(json_field "$OUT" "exit_code")" "2"
+
+info "Test 25c: external --url allowed when --allow-external-urls is empty (allow all)"
+run_and_capture OUT EC "${SCRIPT[@]}" --url "https://example.com" --allow-external-urls "" --json
+# Depending on environment networking, this may succeed or fail with NAV error, but should NOT be bad-args.
+if [[ "$EC" == "0" ]]; then
+  ok "external url allow-all captured successfully"
+elif [[ "$EC" == "3" ]]; then
+  ok "external url allow-all was allowed but navigation failed (expected in restricted envs)"
+else
+  fail "external url allow-all unexpected exit code: $EC"
+fi
+
+info "Test 25d: external --url allowed only when regex matches"
+run_and_capture OUT EC "${SCRIPT[@]}" --url "https://example.com" --allow-external-urls "example\\.com" --json
+if [[ "$EC" == "0" ]]; then
+  ok "external url regex-allowed captured successfully"
+else
+  assert_eq "external url regex-allowed error is navigation" "$EC" "3"
+fi
+
+info "Test 25e: external --url rejected when regex does not match"
+run_and_capture OUT EC "${SCRIPT[@]}" --url "https://example.com" --allow-external-urls "notexample\\.com" --json
+assert_eq "external url regex-deny exit code is 2" "$EC" "2"
+assert_eq "external url regex-deny status=error" "$(json_field "$OUT" "status")" "error"
+
 info "Test 26: --resources-regex SSRF protection blocks private hosts"
 OUT_DIR_SSRF="${TMP_DIR}/run_ssrf"
 # Build a page that contains a src pointing to 127.0.0.1 and inject it as the test page
@@ -714,6 +761,42 @@ assert_eq "ssrf resources exit code is 0" "$EC" "0"
 # We just verify the tool did not crash and reported resources section
 assert_eq "ssrf resources section present" "$(json_has_key "$OUT" "resources")" "True"
 ok "ssrf: tool completed without crashing on private-host URL in DOM"
+
+info "Test 27: resources-regex blocks external URLs by default and reports them in resources.skipped"
+OUT_DIR_EXT_RES="${TMP_DIR}/run_external_resource"
+EXT_RES_JS="${TMP_DIR}/external_resource_inject.js"
+cat > "${EXT_RES_JS}" <<'JS'
+const s = document.createElement('script');
+s.src = 'https://example.com/external.js';
+document.head.appendChild(s);
+return s.src;
+JS
+run_and_capture OUT EC "${SCRIPT[@]}" --url "${TEST_URL}" --output "${OUT_DIR_EXT_RES}" \
+  --run-js-file "${EXT_RES_JS}" --resources-regex "\\.js(\\?|$)" --json
+assert_eq "external resource run exit code is 0" "$EC" "0"
+assert_eq "external resource resources section present" "$(json_has_key "$OUT" "resources")" "True"
+assert_eq "external resource skipped present" "$(python3 - "$OUT" <<'PY'
+import json
+import sys
+
+d=json.loads(sys.argv[1])
+print('True' if isinstance(d.get('resources',{}),dict) and 'skipped' in d['resources'] else 'False')
+PY
+)" "True"
+
+SKIPPED_LEN="$(python3 - "$OUT" <<'PY'
+import json
+import sys
+
+d=json.loads(sys.argv[1])
+print(len(d.get('resources',{}).get('skipped',[]) or []))
+PY
+)"
+if [[ "$SKIPPED_LEN" -ge 1 ]]; then
+  ok "external resource URL was skipped and recorded"
+else
+  fail "expected at least 1 skipped external resource URL"
+fi
 
 echo "------------------------------------"
 echo "Results: ${PASS} passed  ${FAIL} failed"

@@ -4,7 +4,9 @@
 /.tmp_test_page2context/
 /.tmp_probe/
 __pycache__/
+/.venv/
 
 # AI skill copies (.github/copilot-instructions.md, CLAUDE.md, etc.)
 # are TRACKED intentionally so the repo works out of the box for every AI.
 # They are generated from agent-skill.md — run: make sync-agent-skills
+

@@ -3,8 +3,10 @@
 AGENT_SKILL := agent-skill.md
 
 VENV_DIR ?= .venv
-VENV_PY  := $(VENV_DIR)/bin/python3
-VENV_PIP := $(VENV_PY) -m pip
+# Resolve venv bin directory (Linux/macOS). For Windows (skills users), they typically run under Git Bash/WSL;
+# if native Windows CMD/PowerShell is used, they'll need to adapt to Scripts/.
+VENV_BIN := $(VENV_DIR)/bin
+VENV_PY  := $(VENV_BIN)/python3
 
 # Install Python deps + Chromium (minimum required to run the tool)
 setup: setup-venv setup-deps setup-chromium sync-agent-skills
@@ -14,11 +16,11 @@ setup: setup-venv setup-deps setup-chromium sync-agent-skills
 
 # Create a local venv (preferred for agent-driven installs)
 setup-venv:
-	@test -x "$(VENV_PY)" || (python3 -m venv "$(VENV_DIR)" && "$(VENV_PIP)" install --upgrade pip)
+	@test -x "$(VENV_PY)" || (python3 -m venv "$(VENV_DIR)" && "$(VENV_PY)" -m pip install --upgrade pip)
 
 # Install Python dependencies only (into the local venv)
 setup-deps: setup-venv
-	"$(VENV_PIP)" install -r requirements.txt
+	"$(VENV_PY)" -m pip install -r requirements.txt
 
 # Individual browser install targets (use venv python)
 setup-chromium: setup-venv

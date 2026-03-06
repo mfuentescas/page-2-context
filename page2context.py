@@ -194,7 +194,7 @@ SYNTAX_HELP = textwrap.dedent("""\
       --run-js-file <PATH>         Execute JavaScript file in the opened page.
       --post-load-wait-ms <MS>     Extra wait after page load before JS/screenshot (default: 0).
       --resources-regex <REGEX>    Download resources whose URL matches REGEX.
-      --output <DIR>               Output folder (default: page2context)
+      --output <DIR>               Output folder (default: a new temp dir under /tmp)
       --json                       Machine-readable JSON output (for AI callers)
     Examples:
       python3 page2context.py --url "https://example.com"
@@ -231,7 +231,11 @@ def parse_args():
     parser.add_argument("--run-js-file",       default=None,           help="JS file to execute in the opened page.")
     parser.add_argument("--post-load-wait-ms", default="0",            help="Wait (ms) after page load.")
     parser.add_argument("--resources-regex",   default=None,           help="Download resources whose URL matches this regex.")
-    parser.add_argument("--output",            default="page2context", help="Output folder (default: page2context)")
+    parser.add_argument(
+        "--output",
+        default=None,
+        help="Output folder. If omitted, a new unique temp dir is created.",
+    )
     parser.add_argument("--json",              action="store_true",    help="Emit JSON output.")
     args = parser.parse_args()
     if not args.clean_temp and not args.url:
@@ -695,7 +699,23 @@ def main() -> None:
     profile_copy_cleaned  = False
     profile_used          = False
     selected_browser_type = PROFILE_KEY_TO_BROWSER_TYPE.get(selected_profile_key or "", "chromium")
-    output_dir            = pathlib.Path(args.output)
+
+    # Default output dir: create a unique temp folder per run unless --output was provided.
+    if args.output:
+        output_dir = pathlib.Path(args.output)
+    else:
+        try:
+            output_dir = pathlib.Path(
+                tempfile.mkdtemp(prefix="p2cxt_run_", dir=tempfile.gettempdir())
+            )
+        except OSError as exc:
+            _error_exit(
+                EXIT_IO_ERR,
+                "Could not create a temporary output directory.",
+                reason=str(exc),
+                hint="Pass --output <DIR> to write outputs to a specific directory.",
+            )
+
     output_already_exists = output_dir.exists()
     output_dir.mkdir(parents=True, exist_ok=True)
     if output_already_exists:

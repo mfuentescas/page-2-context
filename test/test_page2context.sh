@@ -308,6 +308,17 @@ assert_eq "json chrome_profile_source empty without profile option" "$(json_fiel
 [[ -f "${OUT_DIR}/p2cxt_html.html" ]] && ok "p2cxt_html.html created" || fail "p2cxt_html.html missing"
 grep -q "p2cxt_html.html" "${OUT_DIR}/p2cxt_context.md" && ok "context references p2cxt_html.html" || fail "context missing p2cxt_html.html reference"
 
+info "Test 2b: default output dir is a new temp folder when --output is omitted"
+run_and_capture OUT EC "${SCRIPT[@]}" --url "${TEST_URL}" --json
+assert_eq "default-output exit code is 0" "$EC" "0"
+assert_eq "default-output status=success" "$(json_field "$OUT" "status")" "success"
+DEFAULT_OUT_DIR="$(json_field "$OUT" "output_dir")"
+[[ -n "$DEFAULT_OUT_DIR" ]] && ok "default output_dir present" || fail "default output_dir missing"
+[[ "$DEFAULT_OUT_DIR" == /tmp/* ]] && ok "default output_dir is under /tmp" || fail "default output_dir not under /tmp: $DEFAULT_OUT_DIR"
+[[ -f "${DEFAULT_OUT_DIR}/p2cxt_screenshot.png" ]] && ok "default output_dir screenshot exists" || fail "default output_dir screenshot missing"
+[[ -f "${DEFAULT_OUT_DIR}/p2cxt_context.md" ]] && ok "default output_dir context exists" || fail "default output_dir context missing"
+[[ -f "${DEFAULT_OUT_DIR}/p2cxt_html.html" ]] && ok "default output_dir html exists" || fail "default output_dir html missing"
+
 info "Test 3: text mode prints created files as absolute paths"
 OUT_DIR_TEXT="${TMP_DIR}/run_text"
 run_and_capture OUT EC "${SCRIPT[@]}" --url "${TEST_URL}" --output "${OUT_DIR_TEXT}"

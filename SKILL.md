@@ -76,18 +76,21 @@ The same policy is applied to `--resources-regex` downloads. Blocked external re
 ## Agent contract (must follow)
 
 - Always pass `--json`.
-- `--url` is required unless using clean-only mode (`--clean-temp` and/or `--clean-<browser>` without `--url`).
+- `--url` is required unless using clean-only mode (`--clean-temp` and/or `--clean-<browser>` without `--url`) or interactive `--show-*` session mode.
 - Browser selection:
-  - Use at most one `--use-<browser>` per run (`chrome`, `edge`, `brave`, `firefox`, `safari`, `chromium`, `webkit`).
+  - Use at most one `--use-<browser>` per run.
+  - `<browser>` values: `chrome`, `edge`, `brave`, `firefox`, `safari`, `chromium`, `webkit`.
   - If omitted, chrome is used by default.
 - Headed mode:
   - Use at most one `--show-<browser>` per run.
   - If both `--use-*` and `--show-*` are set, they must target the same browser.
-  - In interactive mode, `--show-*` waits indefinitely for manual completion (login/MFA).
+  - In interactive mode, `--show-*` runs until the browser window is closed.
 - Browser profile cleanup:
   - Use `--clean-<browser>` to remove `./browser/<browser>` folders.
   - `--clean-temp` does not remove browser folders.
 - External URLs are **disabled by default**. Use `--allow-external-urls` to opt in.
+- If the user asks to **download/retrieve/find CSS/JS/resources** from the page, you **must** pass `--resources-regex`.
+  - Example for `copilot*` CSS URLs: `--resources-regex "(?i)/copilot[^/]*\\.css(\\?|$)"`.
 
 ## Minimal usage
 
@@ -95,16 +98,16 @@ The same policy is applied to `--resources-regex` downloads. Blocked external re
 python3 page2context.py --url "<URL>" --json
 ```
 
-External capture (explicit opt-in):
+External capture (explicit opt-in, host-scoped regex):
 
 ```bash
-python3 page2context.py --url "https://example.com" --allow-external-urls "" --json
+python3 page2context.py --url "https://example.com" --allow-external-urls "^https://([^/]+\\.)?example\\.com/" --json
 ```
 
 Authenticated/manual login capture (visible browser):
 
 ```bash
-python3 page2context.py --url "<URL>" --show-chrome --json
+python3 page2context.py --url "<URL>" --show-<browser> --json
 ```
 
 `--show-*` is intended for manual login flows because `./browser/<browser>` is a project-local profile and not the user's regular personal browser profile.
@@ -115,12 +118,33 @@ Run trusted JS + wait for animations + capture + console log:
 python3 page2context.py --url "<URL>" --post-load-wait-ms 1200 --run-js-file "./test/example_log_cookies.js" --console-log --json
 ```
 
+Retrieve `copilot*` CSS from GitHub and compare with local project CSS:
+
+```bash
+python3 page2context.py \
+  --url "https://github.com" \
+  --allow-external-urls "^https://([^/]+\\.)?(github\\.com|githubassets\\.com)/" \
+  --post-load-wait-ms 5000 \
+  --crop "4x10:3" \
+  --resources-regex "(?i)/copilot[^/]*\\.css(\\?|$)" \
+  --output "./tmp/github_copilot_css" \
+  --json
+```
+
+Then compare downloaded resources against local CSS files:
+
+```bash
+diff -u ./tmp/github_copilot_css/p2cxt_resource_001.css ./path/to/local/copilot.css
+```
+
 ## Agent workflow (deterministic)
 
 1. If dependencies are missing, run `make setup` in this repo first.
 2. Run with `--json`.
 3. If `status != "success"`, report `message/reason/exit_code` and stop.
 4. Read `p2cxt_context.md` -> then `p2cxt_html.html` -> then `p2cxt_console.log` (if present).
+5. If `--resources-regex` was used, inspect `resources.matched_urls`, `resources.files`, `resources.failed`, and `resources.skipped` from JSON.
+6. If user asked for comparison, diff each downloaded `resources.files` entry with matching local files and report differences.
 
 ## Common failure hint
 

@@ -92,31 +92,13 @@ Running with no arguments prints full usage help.
 | `--size <WxH>` | ❌ | `1280x720` | Viewport size, e.g. `1920x1080` |
 | `--crop <spec>` | ❌ | *(none)* | Grid crop — see below |
 | `--console-log` | ❌ | *(flag)* | Capture browser console/page/navigation errors into `p2cxt_console.log` |
-| `--use-chrome` | ❌ | *(default browser)* | Use local browser profile directory `./browser/chrome` (created automatically if missing) |
-| `--use-edge` | ❌ | *(off)* | Use local browser profile directory `./browser/edge` |
-| `--use-brave` | ❌ | *(off)* | Use local browser profile directory `./browser/brave` |
-| `--use-firefox` | ❌ | *(off)* | Use local browser profile directory `./browser/firefox` |
-| `--use-safari` | ❌ | *(off)* | Use local browser profile directory `./browser/safari` |
-| `--use-chromium` | ❌ | *(off)* | Use local browser profile directory `./browser/chromium` |
-| `--use-webkit` | ❌ | *(off)* | Use local browser profile directory `./browser/webkit` |
-| `--show-chrome` | ❌ | *(off)* | Open Chrome in interactive session mode using `./browser/chrome`; close the window when done (no Enter prompt) |
-| `--show-edge` | ❌ | *(off)* | Open Edge in interactive session mode using `./browser/edge`; close the window when done (no Enter prompt) |
-| `--show-brave` | ❌ | *(off)* | Open Brave in interactive session mode using `./browser/brave`; close the window when done (no Enter prompt) |
-| `--show-firefox` | ❌ | *(off)* | Open Firefox in interactive session mode using `./browser/firefox`; close the window when done (no Enter prompt) |
-| `--show-safari` | ❌ | *(off)* | Open Safari/WebKit in interactive session mode using `./browser/safari`; close the window when done (no Enter prompt) |
-| `--show-chromium` | ❌ | *(off)* | Open Chromium in interactive session mode using `./browser/chromium`; close the window when done (no Enter prompt) |
-| `--show-webkit` | ❌ | *(off)* | Open WebKit in interactive session mode using `./browser/webkit`; close the window when done (no Enter prompt) |
+| `--use-<browser>` | ❌ | `chrome` | Select local browser profile `./browser/<browser>`. Allowed values for `<browser>`: `chrome`, `edge`, `brave`, `firefox`, `safari`, `chromium`, `webkit`. |
+| `--show-<browser>` | ❌ | *(off)* | Open interactive browser session for `<browser>` using the same profile folder pattern; close the window when done. |
+| `--clean-<browser>` | ❌ | *(flag)* | Remove local browser profile directory `./browser/<browser>` for the selected browser value. |
 | | | | ⚠️ Use only one `--use-*` and one `--show-*` per run. If both are set, they must target the same browser. |
-| `--clean-chrome` | ❌ | *(flag)* | Remove local browser profile directory `./browser/chrome` |
-| `--clean-edge` | ❌ | *(flag)* | Remove local browser profile directory `./browser/edge` |
-| `--clean-brave` | ❌ | *(flag)* | Remove local browser profile directory `./browser/brave` |
-| `--clean-firefox` | ❌ | *(flag)* | Remove local browser profile directory `./browser/firefox` |
-| `--clean-safari` | ❌ | *(flag)* | Remove local browser profile directory `./browser/safari` |
-| `--clean-chromium` | ❌ | *(flag)* | Remove local browser profile directory `./browser/chromium` |
-| `--clean-webkit` | ❌ | *(flag)* | Remove local browser profile directory `./browser/webkit` |
 | `--run-js-file <path>` | ❌ | *(none)* | Execute a JS file inside the opened page and wait for completion |
 | `--post-load-wait-ms <ms>` | ❌ | `0` | Extra wait after page load and before `--run-js-file`/screenshot (useful for animations) |
-| `--resources-regex <regex>` | ❌ | *(none)* | Download matching resources seen in HTML or browser traffic |
+| `--resources-regex <regex>` | ❌ | *(none)* | Download matching resources seen in HTML or browser traffic. **Use this whenever you ask to retrieve CSS/JS/assets (for example `copilot*` CSS).** |
 | `--output <dir>` | ❌ | *(auto)* | Output folder. If omitted, a **new unique temp directory** is created (typically under `/tmp`). |
 | `--json` | ❌ | *(flag)* | Machine-readable JSON output (for AI callers) |
 
@@ -174,10 +156,11 @@ python3 page2context.py --url "http://localhost:4200/" --console-log --run-js-fi
 # Download only CSS/JS assets seen in source/network
 python3 page2context.py --url "http://localhost:4200/" --resources-regex "\\.(css|js)(\\?|$)"
 
-# All options — AI-friendly JSON output
-python3 page2context.py --url "http://localhost:4200/" \
-  --size 1440x900 --crop "2x4:1,2" --console-log --use-chrome --run-js-file "./script.js" \
-  --post-load-wait-ms 1200 --resources-regex "\\.(css|js)(\\?|$)" --output my_capture --json
+# Download only copilot* CSS from GitHub (external URL regex policy)
+python3 page2context.py --url "https://github.com" --allow-external-urls "^https://([^/]+\\.)?(github\\.com|githubassets\\.com)/" --post-load-wait-ms 5000 --crop "4x10:3" --resources-regex "(?i)/copilot[^/]*\\.css(\\?|$)" --output "./tmp/github_copilot_css" --json
+
+# Compare downloaded copilot* CSS with your local file
+diff -u ./tmp/github_copilot_css/p2cxt_resource_001.css ./path/to/local/copilot.css
 ```
 
 ---
@@ -295,6 +278,16 @@ Regex: `\.(css|js)(\?|$)`
 - p2cxt_resource_001.css
 - p2cxt_resource_002.js
 ```
+
+When `--resources-regex` is used with `--json`, inspect these JSON fields for deterministic automation:
+
+- `resources.matched_urls`
+- `resources.files`
+- `resources.failed`
+- `resources.skipped`
+
+For external pages (for example `https://github.com`), combine `--resources-regex` with `--allow-external-urls` or matching resources will be skipped by policy.
+
 ### With `--console-log`
 
 ```text
@@ -322,7 +315,7 @@ See [p2cxt_console.log](p2cxt_console.log) for captured console output and brows
 - Result: `...`
 ```
 
-### With `--use-chrome` / `--use-firefox` / etc.
+### With `--use-<browser>` / `--show-<browser>`
 
 #### Why use a browser profile?
 
@@ -340,6 +333,8 @@ between runs and capture authenticated pages reliably.
   No capture confirmation is required: close the window whenever you are done.
 - This is useful because project profiles (`./browser/<browser>`) are different
   from your normal personal browser profile.
+- If you ever see Chrome's "Restore pages? Chrome didn't shut down correctly" dialog,
+  close it and retry; if it persists, run `--clean-chrome` once to reset the project-local profile.
 
 Use `--clean-<browser>` to remove these local profile folders when desired.
 

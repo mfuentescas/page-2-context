@@ -1658,8 +1658,13 @@ def _resolve_chromium_launch_overrides(browser_key: str) -> dict:
 
     if browser_key in {"chrome", "edge", "brave", "chromium"}:
         # Keep automation defaults lighter for sites that reject automated contexts.
+        # Also suppress crash-session restore prompts in project-local profiles.
         overrides["ignore_default_args"] = ["--enable-automation"]
-        overrides["args"] = ["--disable-blink-features=AutomationControlled"]
+        overrides["args"] = [
+            "--disable-blink-features=AutomationControlled",
+            "--hide-crash-restore-bubble",
+            "--disable-session-crashed-bubble",
+        ]
 
     return overrides
 if __name__ == "__main__":

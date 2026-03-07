@@ -349,9 +349,9 @@ SYNTAX_HELP = textwrap.dedent("""\
     page2context v{version}
     Capture a webpage (screenshot + DOM) into Markdown outputs for AI context.
     Usage:
-      python3 page2context.py --url "<URL>" [OPTIONS]
+      python3 page2context.py [--url "<URL>"] [OPTIONS]
     Required:
-      --url  "<URL>"                URL to capture (required unless using clean-only flags)
+      --url  "<URL>"                URL to capture (required for capture mode; optional with --show-*)
     Optional:
       --help                       Show this help and exit.
       --clean-temp                 Clean historical p2cxt temporary artifacts.
@@ -377,13 +377,13 @@ SYNTAX_HELP = textwrap.dedent("""\
       --use-safari                 Use local profile ./browser/safari (webkit engine).
       --use-chromium               Use local profile ./browser/chromium.
       --use-webkit                 Use local profile ./browser/webkit.
-      --show-chrome                Show browser window (headed mode) using chrome profile; no time limit (waits for manual completion).
-      --show-edge                  Show browser window (headed mode) using edge profile; no time limit (waits for manual completion).
-      --show-brave                 Show browser window (headed mode) using brave profile; no time limit (waits for manual completion).
-      --show-firefox               Show browser window (headed mode) using firefox profile; no time limit (waits for manual completion).
-      --show-safari                Show browser window (headed mode) using safari profile; no time limit (waits for manual completion).
-      --show-chromium              Show browser window (headed mode) using chromium profile; no time limit (waits for manual completion).
-      --show-webkit                Show browser window (headed mode) using webkit profile; no time limit (waits for manual completion).
+      --show-chrome                Show Chrome window (interactive session mode) using chrome profile; closes when you close the window.
+      --show-edge                  Show Edge window (interactive session mode) using edge profile; closes when you close the window.
+      --show-brave                 Show Brave window (interactive session mode) using brave profile; closes when you close the window.
+      --show-firefox               Show Firefox window (interactive session mode) using firefox profile; closes when you close the window.
+      --show-safari                Show Safari window (interactive session mode) using safari profile; closes when you close the window.
+      --show-chromium              Show Chromium window (interactive session mode) using chromium profile; closes when you close the window.
+      --show-webkit                Show WebKit window (interactive session mode) using webkit profile; closes when you close the window.
                                    Only one --use-* and one --show-* browser can be selected per run.
       --run-js-file <PATH>         Execute JavaScript file in the opened page.
       --post-load-wait-ms <MS>     Extra wait after page load before JS/screenshot (default: 0).
@@ -482,9 +482,13 @@ def parse_args():
     args.headed = bool(selected_show)
     args.clean_browsers = selected_clean
 
-    if not args.clean_temp and not args.clean_browsers and not args.url:
-        _error_exit(EXIT_BAD_ARGS, "Argument error: --url is required unless using clean-only flags.",
-                    hint="Use --clean-temp/--clean-<browser> alone to clean, or provide --url for capture.")
+    if args.headed:
+        # In --show-* session mode we do not require --url.
+        args.url = args.url or None
+
+    if not args.clean_temp and not args.clean_browsers and not args.url and not args.headed:
+        _error_exit(EXIT_BAD_ARGS, "Argument error: --url is required unless using clean-only flags or --show-* session mode.",
+                    hint="Use --show-<browser> to open an interactive browser session, or provide --url for capture.")
 
     _json_mode = args.json
     if args.url:
@@ -815,16 +819,45 @@ def _pause_for_manual_interaction_if_headed(args, browser_key: str) -> None:
         return
     if not sys.stdin.isatty():
         return
-    # In interactive headed mode we intentionally wait indefinitely for manual login/MFA.
     print(
         f"[info] Headed mode enabled for {browser_key}. "
         "This uses the local project profile (./browser/<browser>), not your regular browser profile."
     )
-    print("[info] Complete login/MFA manually in the opened window, then press Enter to capture.")
+    print("[info] Interactive session mode: use the browser freely and close the window when done.")
+
+
+def _is_target_closed_playwright_error(raw: str) -> bool:
+    lowered = (raw or "").lower()
+    needles = (
+        "target page, context or browser has been closed",
+        "target closed",
+        "browser has been closed",
+        "context has been closed",
+    )
+    return any(needle in lowered for needle in needles)
+
+
+def _ensure_page_open_or_exit(page, url: str, phase: str) -> None:
     try:
-        input()
-    except EOFError:
-        return
+        if page.is_closed():
+            _error_exit(
+                EXIT_NAVIGATION_ERR,
+                "Capture cancelled because the browser window was closed.",
+                reason=f"The page was closed during {phase}.",
+                hint="Keep the browser window open until capture finishes.",
+                url=url,
+            )
+    except PlaywrightError as exc:
+        raw = str(exc)
+        if _is_target_closed_playwright_error(raw):
+            _error_exit(
+                EXIT_NAVIGATION_ERR,
+                "Capture cancelled because the browser window was closed.",
+                reason=f"The page/context was closed during {phase}.",
+                hint="Keep the browser window open until capture finishes.",
+                url=url,
+            )
+        raise
 
 
 def _capture_screenshot_resilient(page, screenshot_path: pathlib.Path) -> dict:
@@ -1166,6 +1199,50 @@ def _clean_temp_root_p2cxt_artifacts() -> dict:
         "temp_cleaned_dirs": len(cleaned_dirs),
         "temp_cleaned_dirs_list": cleaned_dirs,
     }
+
+
+def _run_headed_session_only(
+    args,
+    selected_profile_key: str,
+    selected_browser_type: str,
+    profile_source_dir: pathlib.Path,
+    viewport_w: int,
+    viewport_h: int,
+) -> None:
+    """Run --show-* as an interactive browser session that ends on window close."""
+    with sync_playwright() as p:
+        browser_type = getattr(p, selected_browser_type)
+        launch_kwargs = {
+            "user_data_dir": str(profile_source_dir),
+            "headless": False,
+        }
+        launch_kwargs.update(_resolve_chromium_launch_overrides(selected_profile_key))
+        context = browser_type.launch_persistent_context(**launch_kwargs)
+        page = context.pages[0] if context.pages else context.new_page()
+        page.set_viewport_size({"width": viewport_w, "height": viewport_h})
+
+        _pause_for_manual_interaction_if_headed(args, selected_profile_key)
+
+        if args.url:
+            try:
+                page.goto(args.url, wait_until="domcontentloaded", timeout=30_000)
+            except PlaywrightError as exc:
+                raw = str(exc)
+                if not _is_target_closed_playwright_error(raw):
+                    raise
+
+        print("[info] Browser session started. Close the browser window to finish.")
+        try:
+            context.wait_for_event("close", timeout=0)
+        except PlaywrightError:
+            pass
+        finally:
+            try:
+                context.close()
+            except PlaywrightError:
+                pass
+
+
 def main() -> None:
     global _profile_source_output
     args = parse_args()
@@ -1186,7 +1263,7 @@ def main() -> None:
     if args.clean_browsers:
         browser_clean_result = _clean_selected_browser_profiles(args.clean_browsers)
 
-    if not args.url:
+    if not args.url and not args.headed:
         payload: dict = {
             "version": __version__,
             "output": [],
@@ -1221,6 +1298,64 @@ def main() -> None:
     _profile_source_output = str(profile_source_dir)
     profile_used = False
     selected_browser_type = PROFILE_KEY_TO_BROWSER_TYPE.get(selected_profile_key, "chromium")
+
+    if args.headed:
+        try:
+            _run_headed_session_only(
+                args,
+                selected_profile_key,
+                selected_browser_type,
+                profile_source_dir,
+                viewport_w,
+                viewport_h,
+            )
+        except PlaywrightError as exc:
+            raw = str(exc)
+            hint = _browser_install_hint(exc, selected_profile_key or selected_browser_type)
+            if hint:
+                _error_exit(EXIT_NAVIGATION_ERR, hint,
+                            fix=f"{sys.executable} -m playwright install {selected_browser_type}")
+            if _is_target_closed_playwright_error(raw):
+                _success(
+                    "Headed browser session finished.",
+                    version=__version__,
+                    url=args.url,
+                    browser_profile_source=str(profile_source_dir),
+                    chrome_profile_source=str(profile_source_dir) if selected_profile_key == "chrome" else "",
+                    browser_profile={
+                        "browser": selected_profile_key,
+                        "source": str(profile_source_dir),
+                        "local_dir": str(profile_source_dir),
+                        "used": True,
+                        "headless": False,
+                    },
+                    output=[],
+                    files=[],
+                    session_mode="interactive",
+                    session_end_reason="target_closed",
+                )
+                return
+            _error_exit(EXIT_NAVIGATION_ERR, f"Could not open headed browser session.", reason=raw.splitlines()[0], url=args.url)
+
+        result: dict = {
+            "version": __version__,
+            "url": args.url,
+            "browser_profile_source": str(profile_source_dir),
+            "chrome_profile_source": str(profile_source_dir) if selected_profile_key == "chrome" else "",
+            "browser_profile": {
+                "browser": selected_profile_key,
+                "source": str(profile_source_dir),
+                "local_dir": str(profile_source_dir),
+                "used": True,
+                "headless": False,
+            },
+            "output": [],
+            "files": [],
+            "session_mode": "interactive",
+            "session_end_reason": "user_closed_window",
+        }
+        _success("Headed browser session finished.", **result)
+        return
 
     if args.output:
         output_dir = pathlib.Path(args.output)
@@ -1288,6 +1423,7 @@ def main() -> None:
             if post_load_wait_ms > 0:
                 page.wait_for_timeout(post_load_wait_ms)
             _pause_for_manual_interaction_if_headed(args, selected_profile_key)
+            _ensure_page_open_or_exit(page, args.url, "manual interaction")
             if js_source is not None:
                 try:
                     script_result = page.evaluate(
@@ -1329,6 +1465,17 @@ def main() -> None:
         if hint:
             _error_exit(EXIT_NAVIGATION_ERR, hint,
                         fix=f"{sys.executable} -m playwright install {selected_browser_type}")
+        if _is_target_closed_playwright_error(raw):
+            _error_exit(
+                EXIT_NAVIGATION_ERR,
+                "Browser/page closed before capture completed.",
+                reason=raw.splitlines()[0],
+                hint=(
+                    "The browser context was closed before capture finished. "
+                    "Retry the command; if this repeats, clean the local profile (for example --clean-chrome) and retry."
+                ),
+                url=args.url,
+            )
         if   "ERR_NAME_NOT_RESOLVED"     in raw: reason = "DNS resolution failed - host not found."
         elif "ERR_CONNECTION_REFUSED"    in raw: reason = "Connection refused - nothing listening at that address."
         elif "ERR_CONNECTION_TIMED_OUT"  in raw or "Timeout" in raw: reason = "Connection timed out."

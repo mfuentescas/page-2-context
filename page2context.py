@@ -1631,6 +1631,41 @@ def main() -> None:
             "skip_reason":  "external URLs blocked by default; use --allow-external-urls to permit",
         }
     _success("Page captured successfully.", **result)
+def _command_on_path(command: str) -> bool:
+    """Return True when an executable command is available on PATH.
+
+    Uses explicit string path scanning to avoid platform-specific shutil.which
+    inspection warnings on Windows runtimes before Python 3.12.
+    """
+    path_value = os.environ.get("PATH", "")
+    if not path_value:
+        return False
+
+    path_entries = [p for p in path_value.split(os.pathsep) if p]
+    if not path_entries:
+        return False
+
+    # Windows may require PATHEXT suffix resolution for commands without extension.
+    if os.name == "nt":
+        pathext = os.environ.get("PATHEXT", ".COM;.EXE;.BAT;.CMD")
+        exts = [ext.lower() for ext in pathext.split(";") if ext]
+        candidates = [command] if pathlib.Path(command).suffix else [command + ext for ext in exts]
+    else:
+        candidates = [command]
+
+    for directory in path_entries:
+        base = pathlib.Path(directory)
+        for candidate in candidates:
+            exe_path = base / candidate
+            try:
+                if exe_path.is_file() and os.access(exe_path, os.X_OK):
+                    return True
+            except OSError:
+                continue
+
+    return False
+
+
 def _resolve_chromium_launch_overrides(browser_key: str) -> dict:
     """Return optional Playwright launch args for Chromium-based browsers.
 
@@ -1639,10 +1674,10 @@ def _resolve_chromium_launch_overrides(browser_key: str) -> dict:
     """
     overrides: dict = {}
     if browser_key == "chrome":
-        if shutil.which("google-chrome") or shutil.which("google-chrome-stable"):
+        if _command_on_path("google-chrome") or _command_on_path("google-chrome-stable"):
             overrides["channel"] = "chrome"
     elif browser_key == "edge":
-        if shutil.which("microsoft-edge") or shutil.which("microsoft-edge-stable"):
+        if _command_on_path("microsoft-edge") or _command_on_path("microsoft-edge-stable"):
             overrides["channel"] = "msedge"
     elif browser_key == "brave":
         brave_candidates = [

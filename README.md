@@ -77,7 +77,7 @@ make setup-brave      # Brave (uses Chromium engine — same as make setup-chrom
 ## Usage
 
 ```bash
-python3 page2context.py --url "<URL>" [OPTIONS]
+python3 page2context.py [--url "<URL>"] [OPTIONS]
 ```
 
 Running with no arguments prints full usage help.
@@ -86,7 +86,7 @@ Running with no arguments prints full usage help.
 
 | Parameter | Required | Default | Description |
 |-----------|----------|---------|-------------|
-| `--url "<URL>"` | ✅ | — | URL to capture |
+| `--url "<URL>"` | ⚠️ | — | URL to capture. **Required for capture mode**, optional when using `--show-*` interactive mode. |
 | `--allow-external-urls [regex]` | ❌ | *(none)* | **Disabled by default**: only localhost/127.0.0.1/::1 and private/local IP literals are allowed. Use this flag to opt into external URLs for `--url` and for `--resources-regex` downloads. Pass empty (`""`) to allow all external URLs, or a regex to restrict allowed URLs. |
 | `--clean-temp` | ❌ | *(flag)* | Clean historical `p2cxt_*` artifacts tracked in cache |
 | `--size <WxH>` | ❌ | `1280x720` | Viewport size, e.g. `1920x1080` |
@@ -99,13 +99,13 @@ Running with no arguments prints full usage help.
 | `--use-safari` | ❌ | *(off)* | Use local browser profile directory `./browser/safari` |
 | `--use-chromium` | ❌ | *(off)* | Use local browser profile directory `./browser/chromium` |
 | `--use-webkit` | ❌ | *(off)* | Use local browser profile directory `./browser/webkit` |
-| `--show-chrome` | ❌ | *(off)* | Show Chrome window (headed mode) using `./browser/chrome`; waits indefinitely for manual completion |
-| `--show-edge` | ❌ | *(off)* | Show Edge window (headed mode) using `./browser/edge`; waits indefinitely for manual completion |
-| `--show-brave` | ❌ | *(off)* | Show Brave window (headed mode) using `./browser/brave`; waits indefinitely for manual completion |
-| `--show-firefox` | ❌ | *(off)* | Show Firefox window (headed mode) using `./browser/firefox`; waits indefinitely for manual completion |
-| `--show-safari` | ❌ | *(off)* | Show Safari/WebKit window (headed mode) using `./browser/safari`; waits indefinitely for manual completion |
-| `--show-chromium` | ❌ | *(off)* | Show Chromium window (headed mode) using `./browser/chromium`; waits indefinitely for manual completion |
-| `--show-webkit` | ❌ | *(off)* | Show WebKit window (headed mode) using `./browser/webkit`; waits indefinitely for manual completion |
+| `--show-chrome` | ❌ | *(off)* | Open Chrome in interactive session mode using `./browser/chrome`; close the window when done (no Enter prompt) |
+| `--show-edge` | ❌ | *(off)* | Open Edge in interactive session mode using `./browser/edge`; close the window when done (no Enter prompt) |
+| `--show-brave` | ❌ | *(off)* | Open Brave in interactive session mode using `./browser/brave`; close the window when done (no Enter prompt) |
+| `--show-firefox` | ❌ | *(off)* | Open Firefox in interactive session mode using `./browser/firefox`; close the window when done (no Enter prompt) |
+| `--show-safari` | ❌ | *(off)* | Open Safari/WebKit in interactive session mode using `./browser/safari`; close the window when done (no Enter prompt) |
+| `--show-chromium` | ❌ | *(off)* | Open Chromium in interactive session mode using `./browser/chromium`; close the window when done (no Enter prompt) |
+| `--show-webkit` | ❌ | *(off)* | Open WebKit in interactive session mode using `./browser/webkit`; close the window when done (no Enter prompt) |
 | | | | ⚠️ Use only one `--use-*` and one `--show-*` per run. If both are set, they must target the same browser. |
 | `--clean-chrome` | ❌ | *(flag)* | Remove local browser profile directory `./browser/chrome` |
 | `--clean-edge` | ❌ | *(flag)* | Remove local browser profile directory `./browser/edge` |
@@ -144,7 +144,10 @@ python3 page2context.py --clean-temp --url "http://localhost:4200/"
 # Use Firefox local profile
 python3 page2context.py --url "http://localhost:4200/" --use-firefox
 
-# Show Chrome browser window so you can interact manually (login/MFA/etc.)
+# Show Chrome browser window only (interactive session mode, no URL required)
+python3 page2context.py --show-chrome
+
+# Show Chrome browser window and open an initial URL (still interactive session mode)
 python3 page2context.py --url "http://localhost:4200/" --show-chrome
 
 # Use and show Firefox explicitly (headed mode)
@@ -333,8 +336,8 @@ between runs and capture authenticated pages reliably.
   `./browser/firefox`, etc.).
 - If the folder does not exist, it is created automatically.
 - Chrome is the default browser if no `--use-*`/`--show-*` is provided.
-- `--show-<browser>` launches headed mode so you can manually log in (passwords,
-  MFA, consent dialogs) and waits with no time limit until you confirm capture.
+- `--show-<browser>` launches an interactive browser session (headed mode).
+  No capture confirmation is required: close the window whenever you are done.
 - This is useful because project profiles (`./browser/<browser>`) are different
   from your normal personal browser profile.
 
@@ -501,7 +504,7 @@ point this flag at untrusted or user-supplied JS.
 Browser state is stored in `./browser/<browser>` directories under the project root.
 These folders are reused between runs and can be removed explicitly with `--clean-<browser>`.
 Use `--show-<browser>` when you need manual interaction in a visible browser window.
-In interactive mode, `--show-<browser>` waits indefinitely for your manual completion.
+In interactive mode, `--show-<browser>` runs until you close the browser window.
 
 ---
 

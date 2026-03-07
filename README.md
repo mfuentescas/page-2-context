@@ -15,23 +15,35 @@ asking an AI to help fix each regression, was painfully slow because no AI can
 
 **page2context** fixes that: it opens any URL in a real browser (via Playwright),
 takes a full-page screenshot, grabs the live DOM, and writes everything into
-`p2cxt_context.md` + `p2cxt_html.html` — ready to drop into GitHub Copilot,
-Cursor, Claude, or any AI chat. Now the AI can see exactly what you see, and
-you can compare layouts, spot CSS regressions, and fix them without leaving
-your editor.
+`p2cxt_context.md` + `p2cxt_html.html` (and, when requested, matching CSS/JS assets)
+ready to drop into GitHub Copilot, Cursor, Claude, or any AI chat. Now the AI can
+see exactly what you see, and you can compare layouts, spot CSS regressions, and
+fix them without leaving your editor.
 
 ```
-+----------------------+    page2context    +--------------------------+
-|  Any URL / localhost | ────────────────►  |  page2context/           |
-|  (real browser)      |                    |  ├── p2cxt_context.md    |
-|                      |                    |  ├── p2cxt_html.html     |
-|                      |                    |  ├── p2cxt_screenshot.png |
++----------------------+    page2context    +-----------------------------+
+|  Any URL / localhost | ────────────────►  |  page2context/              |
+|  (real browser)      |                    |  ├── p2cxt_context.md       |
+|                      |                    |  ├── p2cxt_html.html        |
+|                      |                    |  ├── p2cxt_screenshot.png   |
+|                      |                    |  ├── p2cxt_resource_001.css |
+|                      |                    |  ├── p2cxt_resource_002.js  |
 |                      |                    |  └── p2cxt_tile_1.png (opt.) |
-+----------------------+                    +--------------------------+
++----------------------+                    +-----------------------------+
                                                        │
                                                        ▼
                                           GitHub Copilot / Cursor / ...
 ```
+
+### Visual Example (Prompt-Driven Run)
+
+Prompt used:
+
+> Use page2context to load github.com, wait 5 seconds, then capture tile #5 of a 4×10 grid of the page and retrieve the copilot* CSS file. Show me the capture and compare that CSS file with the one existing in the project and show me the differences.
+
+Example screenshot from that flow:
+
+![Prompt-driven GitHub tile capture and copilot CSS retrieval example](readme_example_github_tile5_copilot_css.png)
 
 ---
 

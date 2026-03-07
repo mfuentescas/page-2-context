@@ -1,6 +1,6 @@
 ---
 name: page-2-context
-description: Screenshot + live DOM capture (p2cxt_*) for CSS/layout debugging and visual regression. Includes safe browser-profile temp copies for logged-in sessions.
+description: Screenshot + live DOM capture (p2cxt_*) for CSS/layout debugging and visual regression, with persistent local browser profiles under ./browser/<browser>.
 ---
 
 # page2context
@@ -14,7 +14,7 @@ Capture a webpage into AI-readable artifacts:
 
 - CSS/layout debugging, pixel-perfect comparisons, visual diffs
 - Reviewing localhost/dev servers (Angular/React/Vue/etc.)
-- Capturing authenticated pages using an existing logged-in browser session
+- Capturing authenticated pages with persistent project-local browser profiles
 
 ## When to use
 
@@ -45,9 +45,10 @@ python3 -m playwright install chromium
 
 ## Safety (browser profiles)
 
-Profile flags let you reuse an already-authenticated session (cookies/storage) **safely**:
-- The original browser profile is **never modified**.
-- The tool copies the profile to a **temporary directory**, uses the copy, then deletes it.
+Browser state is stored under local project folders:
+- `./browser/chrome`, `./browser/firefox`, etc.
+- Folders are created automatically when used.
+- Remove them explicitly with `--clean-<browser>` when needed.
 
 ## Security warning: prompt injection / untrusted pages (important)
 
@@ -75,21 +76,17 @@ The same policy is applied to `--resources-regex` downloads. Blocked external re
 ## Agent contract (must follow)
 
 - Always pass `--json`.
-- `--url` is required unless using clean-only mode (`--clean-temp` without `--url`).
-- Use **only one** browser profile flag per run:
-  - `--chrome-profile-dir`
-  - `--edge-profile-dir`
-  - `--brave-profile-dir`
-  - `--firefox-profile-dir`
-  - `--safari-profile-dir`
-  - `--chromium-profile-dir`
-  - `--webkit-profile-dir`
-- Profile flags accept either:
-  - an explicit profile directory path, or
-  - `""` to auto-detect (fails with a clear error if not found).
-- JSON always includes `chrome_profile_source` (path used for Chrome profile mode, or `""` if unused).
-  - Exception: clean-only mode (`--clean-temp` without `--url`) omits this field.
-
+- `--url` is required unless using clean-only mode (`--clean-temp` and/or `--clean-<browser>` without `--url`).
+- Browser selection:
+  - Use at most one `--use-<browser>` per run (`chrome`, `edge`, `brave`, `firefox`, `safari`, `chromium`, `webkit`).
+  - If omitted, chrome is used by default.
+- Headed mode:
+  - Use at most one `--show-<browser>` per run.
+  - If both `--use-*` and `--show-*` are set, they must target the same browser.
+  - In interactive mode, `--show-*` waits indefinitely for manual completion (login/MFA).
+- Browser profile cleanup:
+  - Use `--clean-<browser>` to remove `./browser/<browser>` folders.
+  - `--clean-temp` does not remove browser folders.
 - External URLs are **disabled by default**. Use `--allow-external-urls` to opt in.
 
 ## Minimal usage
@@ -103,13 +100,14 @@ External capture (explicit opt-in):
 ```bash
 python3 page2context.py --url "https://example.com" --allow-external-urls "" --json
 ```
-***
 
-Authenticated capture (Chrome profile auto-detect):
+Authenticated/manual login capture (visible browser):
 
 ```bash
-python3 page2context.py --url "<URL>" --chrome-profile-dir "" --json
+python3 page2context.py --url "<URL>" --show-chrome --json
 ```
+
+`--show-*` is intended for manual login flows because `./browser/<browser>` is a project-local profile and not the user's regular personal browser profile.
 
 Run trusted JS + wait for animations + capture + console log:
 
@@ -122,7 +120,7 @@ python3 page2context.py --url "<URL>" --post-load-wait-ms 1200 --run-js-file "./
 1. If dependencies are missing, run `make setup` in this repo first.
 2. Run with `--json`.
 3. If `status != "success"`, report `message/reason/exit_code` and stop.
-4. Read `p2cxt_context.md` → then `p2cxt_html.html` → then `p2cxt_console.log` (if present).
+4. Read `p2cxt_context.md` -> then `p2cxt_html.html` -> then `p2cxt_console.log` (if present).
 
 ## Common failure hint
 

@@ -883,6 +883,37 @@ def _capture_screenshot_resilient(page, screenshot_path: pathlib.Path) -> dict:
             )
 
 
+def _goto_with_resilient_wait(page, url: str, timeout_ms: int = 30_000) -> dict:
+    """Navigate with a network-idle first strategy and timeout fallback.
+
+    Logged-in pages can keep long-lived background connections open and never
+    reach Playwright's networkidle condition. We retry with domcontentloaded
+    when that happens.
+    """
+    try:
+        page.goto(url, wait_until="networkidle", timeout=timeout_ms)
+        return {"wait_until": "networkidle", "fallback_used": False}
+    except PlaywrightError as first_exc:
+        first_raw = str(first_exc)
+        first_reason = first_raw.splitlines()[0]
+        lowered = first_raw.lower()
+        if "timeout" not in lowered and "timed out" not in lowered:
+            raise
+        try:
+            page.goto(url, wait_until="domcontentloaded", timeout=timeout_ms)
+            return {
+                "wait_until": "domcontentloaded",
+                "fallback_used": True,
+                "fallback_reason": first_reason,
+            }
+        except PlaywrightError as second_exc:
+            second_reason = str(second_exc).splitlines()[0]
+            raise PlaywrightError(
+                "Page.goto failed in networkidle and domcontentloaded modes. "
+                f"networkidle: {first_reason} | domcontentloaded: {second_reason}"
+            )
+
+
 def _cleanup_prefixed_files(output_dir: pathlib.Path) -> None:
     try:
         for path in output_dir.glob(f"{OUTPUT_PREFIX}*"):
@@ -1388,6 +1419,7 @@ def main() -> None:
     html           = ""
     script_result  = None
     screenshot_meta = {"mode": "full_page", "fallback_used": False}
+    navigation_meta = {"wait_until": "networkidle", "fallback_used": False}
     console_lines: list[str] = []
     def _log_console(line: str) -> None:
         console_lines.append(line)
@@ -1419,7 +1451,7 @@ def main() -> None:
             page.on("request",  lambda req:  observed_urls.add(req.url))
             page.on("response", lambda resp: observed_urls.add(resp.url))
             page.set_viewport_size({"width": viewport_w, "height": viewport_h})
-            page.goto(args.url, wait_until="networkidle", timeout=30_000)
+            navigation_meta = _goto_with_resilient_wait(page, args.url, timeout_ms=30_000)
             if post_load_wait_ms > 0:
                 page.wait_for_timeout(post_load_wait_ms)
             _pause_for_manual_interaction_if_headed(args, selected_profile_key)
@@ -1590,6 +1622,8 @@ def main() -> None:
         result["script"] = {"file": str(js_file_path), "result": script_result}
     if screenshot_meta.get("fallback_used"):
         result["screenshot_capture"] = screenshot_meta
+    if navigation_meta.get("fallback_used"):
+        result["navigation"] = navigation_meta
     if profile_source_dir is not None:
         result["browser_profile"] = {
             "browser": selected_profile_key,
@@ -1631,6 +1665,41 @@ def main() -> None:
             "skip_reason":  "external URLs blocked by default; use --allow-external-urls to permit",
         }
     _success("Page captured successfully.", **result)
+def _command_on_path(command: str) -> bool:
+    """Return True when an executable command is available on PATH.
+
+    Uses explicit string path scanning to avoid platform-specific shutil.which
+    inspection warnings on Windows runtimes before Python 3.12.
+    """
+    path_value = os.environ.get("PATH", "")
+    if not path_value:
+        return False
+
+    path_entries = [p for p in path_value.split(os.pathsep) if p]
+    if not path_entries:
+        return False
+
+    # Windows may require PATHEXT suffix resolution for commands without extension.
+    if os.name == "nt":
+        pathext = os.environ.get("PATHEXT", ".COM;.EXE;.BAT;.CMD")
+        exts = [ext.lower() for ext in pathext.split(";") if ext]
+        candidates = [command] if pathlib.Path(command).suffix else [command + ext for ext in exts]
+    else:
+        candidates = [command]
+
+    for directory in path_entries:
+        base = pathlib.Path(directory)
+        for candidate in candidates:
+            exe_path = base / candidate
+            try:
+                if exe_path.is_file() and os.access(exe_path, os.X_OK):
+                    return True
+            except OSError:
+                continue
+
+    return False
+
+
 def _resolve_chromium_launch_overrides(browser_key: str) -> dict:
     """Return optional Playwright launch args for Chromium-based browsers.
 
@@ -1639,10 +1708,10 @@ def _resolve_chromium_launch_overrides(browser_key: str) -> dict:
     """
     overrides: dict = {}
     if browser_key == "chrome":
-        if shutil.which("google-chrome") or shutil.which("google-chrome-stable"):
+        if _command_on_path("google-chrome") or _command_on_path("google-chrome-stable"):
             overrides["channel"] = "chrome"
     elif browser_key == "edge":
-        if shutil.which("microsoft-edge") or shutil.which("microsoft-edge-stable"):
+        if _command_on_path("microsoft-edge") or _command_on_path("microsoft-edge-stable"):
             overrides["channel"] = "msedge"
     elif browser_key == "brave":
         brave_candidates = [
@@ -1658,8 +1727,13 @@ def _resolve_chromium_launch_overrides(browser_key: str) -> dict:
 
     if browser_key in {"chrome", "edge", "brave", "chromium"}:
         # Keep automation defaults lighter for sites that reject automated contexts.
+        # Also suppress crash-session restore prompts in project-local profiles.
         overrides["ignore_default_args"] = ["--enable-automation"]
-        overrides["args"] = ["--disable-blink-features=AutomationControlled"]
+        overrides["args"] = [
+            "--disable-blink-features=AutomationControlled",
+            "--hide-crash-restore-bubble",
+            "--disable-session-crashed-bubble",
+        ]
 
     return overrides
 if __name__ == "__main__":

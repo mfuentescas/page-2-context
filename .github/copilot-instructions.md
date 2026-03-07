@@ -52,14 +52,14 @@ python3 page2context.py --url "<URL>" --json
 ```bash
 python3 page2context.py \
   --clean-temp \
-  --clean-chrome \
+  --clean-<browser> \
   --url "<URL>" \
   --allow-external-urls "<REGEX>" \
   --size "<WIDTHxHEIGHT>" \
   --crop "<COLSxROWS:TILE[,TILE]>" \
   --console-log \
-  --use-chrome \
-  --show-chrome \
+  --use-<browser> \
+  --show-<browser> \
   --run-js-file "<PATH>" \
   --post-load-wait-ms "<MS>" \
   --resources-regex "<REGEX>" \
@@ -67,33 +67,53 @@ python3 page2context.py \
   --json
 ```
 
+`<browser>` values: `chrome`, `edge`, `brave`, `firefox`, `safari`, `chromium`, `webkit`.
+
 ### Browser selection
 
-Use one `--use-*` browser flag (optional). If omitted, Chrome is used by default.
+Use one `--use-<browser>` flag (optional). If omitted, Chrome is used by default.
 
 ```bash
-python3 page2context.py --url "<URL>" --json
+python3 page2context.py --url "<URL>" --use-<browser> --json
 python3 page2context.py --url "<URL>" --use-firefox --json
-python3 page2context.py --url "<URL>" --use-edge --json
-python3 page2context.py --url "<URL>" --use-brave --json
-python3 page2context.py --url "<URL>" --use-safari --json
-python3 page2context.py --url "<URL>" --use-chromium --json
-python3 page2context.py --url "<URL>" --use-webkit --json
 ```
 
-Use one `--show-*` flag to run headed (visible) mode. If both `--use-*` and `--show-*` are set, they must target the same browser.
-In interactive terminals, `--show-*` waits indefinitely for manual completion (login/MFA) before capture.
+Use one `--show-<browser>` flag to run headed (visible) mode. If both `--use-*` and `--show-*` are set, they must target the same browser.
+In interactive terminals, `--show-*` runs until the browser window is closed.
 
 ```bash
-python3 page2context.py --url "<URL>" --show-chrome --json
+python3 page2context.py --show-<browser> --json
 python3 page2context.py --url "<URL>" --use-firefox --show-firefox --json
+```
+
+### Resource retrieval rule (important)
+
+If the user asks to retrieve/download/find CSS/JS/assets from the page, you must pass `--resources-regex`.
+
+- Regex is applied to full absolute resource URLs discovered from HTML refs and observed browser traffic.
+- For external websites, also pass `--allow-external-urls` (empty value `""` = allow all, regex = allow specific URLs).
+- Prefer a host-scoped regex over allow-all when possible.
+- Inspect JSON fields `resources.matched_urls`, `resources.files`, `resources.failed`, and `resources.skipped`.
+
+Example for `copilot*` CSS URLs (external-host regex policy):
+
+```bash
+python3 page2context.py \
+  --url "https://github.com" \
+  --allow-external-urls "^https://([^/]+\\.)?(github\\.com|githubassets\\.com)/" \
+  --post-load-wait-ms 5000 \
+  --crop "4x10:3" \
+  --resources-regex "(?i)/copilot[^/]*\\.css(\\?|$)" \
+  --output "./tmp/github_copilot_css" \
+  --json
 ```
 
 ### Cleanup helpers
 
-`--clean-temp` only removes historical `p2cxt_*` artifacts. Browser profile folders are cleaned separately:
+`--clean-temp` only removes historical `p2cxt_*` artifacts. Browser profile folders are cleaned separately with `--clean-<browser>`.
 
 ```bash
+python3 page2context.py --clean-<browser> --json
 python3 page2context.py --clean-chrome --clean-firefox --json
 ```
 
@@ -101,7 +121,7 @@ python3 page2context.py --clean-chrome --clean-firefox --json
 
 | Parameter | Required | Default | Description |
 |-----------|----------|---------|-------------|
-| `--url` | ✅ (unless clean-only) | - | URL to capture (always quote it) |
+| `--url` | ✅ (unless clean-only or `--show-*` session mode) | - | URL to capture (always quote it) |
 | `--allow-external-urls` | ❌ | *(none)* | Allow external URLs for `--url` and resource downloads. Omitted = blocked by default. Empty value allows all. Regex value allows matches only. |
 | `--size` | ❌ | `1280x720` | Viewport size, e.g. `1920x1080` or `375x812` |
 | `--crop` | ❌ | *(none)* | Grid crop spec |
@@ -109,7 +129,7 @@ python3 page2context.py --clean-chrome --clean-firefox --json
 | `--clean-<browser>` | ❌ | *(flag)* | Remove local browser profile folder `./browser/<browser>` |
 | `--console-log` | ❌ | *(flag)* | Save console/page/navigation errors into `p2cxt_console.log` |
 | `--use-<browser>` | ❌ | `chrome` | Select browser/profile folder `./browser/<browser>` |
-| `--show-<browser>` | ❌ | *(headless)* | Show browser window for manual interaction (password/MFA/login flows); waits indefinitely in interactive mode |
+| `--show-<browser>` | ❌ | *(headless)* | Open interactive browser session; close the window to finish |
 | `--run-js-file` | ❌ | *(none)* | Execute JS file in browser page and wait until it finishes |
 | `--post-load-wait-ms` | ❌ | `0` | Extra wait in milliseconds after page load and before JS/screenshot |
 | `--resources-regex` | ❌ | *(none)* | Download resources whose URL matches regex from HTML refs + observed traffic |
@@ -223,13 +243,14 @@ Each selected tile is saved as a **separate PNG** (`p2cxt_tile_N.png`).
 ## Suggested AI workflow
 
 1. Call `page2context` with `--json`.
-2. Check `status == "success"`; otherwise report `message/reason/exit_code` and stop.
-3. Read `<output_dir>/p2cxt_context.md`.
-4. Read `<output_dir>/p2cxt_html.html`.
-5. If present, read `<output_dir>/p2cxt_console.log`.
-6. If present, inspect `browser_profile` for selected browser/local_dir/headless details.
-7. If present, inspect `resources.files` for CSS/JS artifacts.
-8. Use all artifacts to answer the user question.
+2. If user asked for assets (CSS/JS/resources), include `--resources-regex` in the call.
+3. Check `status == "success"`; otherwise report `message/reason/exit_code` and stop.
+4. Read `<output_dir>/p2cxt_context.md`.
+5. Read `<output_dir>/p2cxt_html.html`.
+6. If present, read `<output_dir>/p2cxt_console.log`.
+7. If present, inspect `browser_profile` for selected browser/local_dir/headless details.
+8. If present, inspect `resources.files` and compare requested files against local project files.
+9. Use all artifacts to answer the user question.
 
 Note: `./browser/<browser>` is a project-local profile and is different from the user's normal personal browser profile.
 

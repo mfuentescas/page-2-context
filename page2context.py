@@ -1261,10 +1261,12 @@ def main() -> None:
         with sync_playwright() as p:
             browser_type = getattr(p, selected_browser_type)
             try:
-                context = browser_type.launch_persistent_context(
-                    user_data_dir=str(profile_source_dir),
-                    headless=not args.headed,
-                )
+                launch_kwargs = {
+                    "user_data_dir": str(profile_source_dir),
+                    "headless": not args.headed,
+                }
+                launch_kwargs.update(_resolve_chromium_launch_overrides(selected_profile_key))
+                context = browser_type.launch_persistent_context(**launch_kwargs)
                 page = context.pages[0] if context.pages else context.new_page()
                 profile_used = True
             except PlaywrightError as exc:
@@ -1482,6 +1484,37 @@ def main() -> None:
             "skip_reason":  "external URLs blocked by default; use --allow-external-urls to permit",
         }
     _success("Page captured successfully.", **result)
+def _resolve_chromium_launch_overrides(browser_key: str) -> dict:
+    """Return optional Playwright launch args for Chromium-based browsers.
+
+    Some login providers (for example Google) are stricter with embedded/automation
+    contexts, so we prefer branded channels when available.
+    """
+    overrides: dict = {}
+    if browser_key == "chrome":
+        if shutil.which("google-chrome") or shutil.which("google-chrome-stable"):
+            overrides["channel"] = "chrome"
+    elif browser_key == "edge":
+        if shutil.which("microsoft-edge") or shutil.which("microsoft-edge-stable"):
+            overrides["channel"] = "msedge"
+    elif browser_key == "brave":
+        brave_candidates = [
+            "/usr/bin/brave-browser",
+            "/usr/bin/brave",
+            "/snap/bin/brave",
+            "/opt/brave.com/brave/brave-browser",
+        ]
+        for candidate in brave_candidates:
+            if pathlib.Path(candidate).exists():
+                overrides["executable_path"] = candidate
+                break
+
+    if browser_key in {"chrome", "edge", "brave", "chromium"}:
+        # Keep automation defaults lighter for sites that reject automated contexts.
+        overrides["ignore_default_args"] = ["--enable-automation"]
+        overrides["args"] = ["--disable-blink-features=AutomationControlled"]
+
+    return overrides
 if __name__ == "__main__":
     try:
         main()

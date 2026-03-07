@@ -525,3 +525,17 @@ In interactive mode, `--show-<browser>` waits indefinitely for your manual compl
 2) Capture using your current project Chrome profile (when login is required)
 
 > Use `page2context` with `--show-chrome` to open a visible browser, log in if needed, then capture http://localhost:4200 with 1024x768 viewport and 5 seconds wait after load.
+
+### Browser login caveat (Google/Gmail)
+
+Some identity providers (especially Google) can still reject automation-controlled sessions with messages like:
+`This browser or app may not be secure`.
+
+`page2context` now prefers real installed browser channels (for example Chrome via `channel=chrome`) in `--use-chrome` runs and reduces default automation flags, but providers can still enforce stricter checks.
+
+If this happens:
+
+1. Use `--show-chrome` and complete login manually in the visible window.
+2. Keep using the same project profile folder (`./browser/chrome`) for later captures.
+3. Ensure your system Chrome is installed and up to date.
+

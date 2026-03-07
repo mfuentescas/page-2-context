@@ -5,6 +5,7 @@
 /.tmp_probe/
 __pycache__/
 /.venv/
+/browser/
 
 # AI skill copies (.github/copilot-instructions.md, CLAUDE.md, etc.)
 # are TRACKED intentionally so the repo works out of the box for every AI.

@@ -78,6 +78,8 @@ version:
 
 test:
 	bash ./test/test_page2context.sh
+	@PY=$$(test -x "$(VENV_PY)" && echo "$(VENV_PY)" || echo "python3"); \
+	$$PY -m unittest discover -s test -p "test_cli_params_unit.py" -v
 
 # Quick usage example — override URL as needed
 run:

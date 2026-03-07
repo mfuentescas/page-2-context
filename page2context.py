@@ -156,21 +156,29 @@ PROFILE_KEY_TO_BROWSER_TYPE: dict[str, str] = {
     "safari":   "webkit",
     "webkit":   "webkit",
 }
+BROWSER_KEYS: tuple[str, ...] = ("chrome", "edge", "brave", "firefox", "safari", "chromium", "webkit")
+
+# Local persistent profiles live under <project_root>/browser/<browser>.
+BROWSER_PROFILE_ROOT = pathlib.Path(__file__).resolve().parent / "browser"
+
 def _history_file_full_path() -> str:
     return str(_state_file().resolve())
 _json_mode: bool = False
 _profile_source_output: str = ""
 
 def _emit(payload: dict) -> None:
-    # Clean-only mode shouldn't include chrome_profile_source in output.
-    is_clean_only = payload.get("status") == "success" and payload.get("message") == "Historical temporary artifacts cleaned."
+    # Clean-only modes omit profile source fields.
+    browser_clean_only = payload.get("status") == "success" and payload.get("message") == "Browser profile directories cleaned."
+    clean_only_messages = {
+        "Historical temporary artifacts cleaned.",
+        "Browser profile directories cleaned.",
+    }
+    is_clean_only = payload.get("status") == "success" and payload.get("message") in clean_only_messages
 
-    if "history_file" not in payload:
+    if "history_file" not in payload and not browser_clean_only:
         payload = {**payload, "history_file": _history_file_full_path()}
     if not is_clean_only and "chrome_profile_source" not in payload:
         payload = {**payload, "chrome_profile_source": _profile_source_output}
-    # Always include the real profile source directory used for navigation when a profile flag is used.
-    # (This is the source profile on disk, not the temp copy.)
     if not is_clean_only and "browser_profile_source" not in payload:
         payload = {**payload, "browser_profile_source": _profile_source_output}
 
@@ -229,6 +237,30 @@ def _emit_text(payload: dict) -> None:
             history_file = payload.get("history_file")
             if history_file:
                 print(f"history_file: {history_file}")
+            return
+
+        if msg == "Browser profile directories cleaned.":
+            cleaned_dirs = payload.get("cleaned_browser_dirs", [])
+            failed_dirs = payload.get("failed_browser_dirs", [])
+            reclaimed_bytes = payload.get("reclaimed_bytes", 0)
+            reclaimed_human = payload.get("reclaimed_human", "0 B")
+            details = payload.get("cleaned_browser_details", [])
+            print(f"cleaned_browser_count: {payload.get('cleaned_browser_count', 0)}")
+            print(f"reclaimed_bytes: {reclaimed_bytes}")
+            print(f"reclaimed_human: {reclaimed_human}")
+            if isinstance(cleaned_dirs, list) and cleaned_dirs:
+                print("cleaned_browser_dirs:")
+                for p in cleaned_dirs:
+                    print(str(p))
+            if isinstance(details, list) and details:
+                print("cleaned_browser_details:")
+                for item in details:
+                    if isinstance(item, dict):
+                        print(f"{item.get('path', '')} :: {item.get('reclaimed_human', '0 B')} ({item.get('reclaimed_bytes', 0)} bytes)")
+            if isinstance(failed_dirs, list) and failed_dirs:
+                print("failed_browser_dirs:")
+                for entry in failed_dirs:
+                    print(str(entry))
             return
 
         outputs = payload.get("output")
@@ -319,10 +351,17 @@ SYNTAX_HELP = textwrap.dedent("""\
     Usage:
       python3 page2context.py --url "<URL>" [OPTIONS]
     Required:
-      --url  "<URL>"                URL to capture (required unless using only --clean-temp)
+      --url  "<URL>"                URL to capture (required unless using clean-only flags)
     Optional:
       --help                       Show this help and exit.
       --clean-temp                 Clean historical p2cxt temporary artifacts.
+      --clean-chrome               Remove local browser profile dir: ./browser/chrome
+      --clean-edge                 Remove local browser profile dir: ./browser/edge
+      --clean-brave                Remove local browser profile dir: ./browser/brave
+      --clean-firefox              Remove local browser profile dir: ./browser/firefox
+      --clean-safari               Remove local browser profile dir: ./browser/safari
+      --clean-chromium             Remove local browser profile dir: ./browser/chromium
+      --clean-webkit               Remove local browser profile dir: ./browser/webkit
       --allow-external-urls [REGEX]
                                    Allow external (non-localhost/non-private IP) URLs for --url and resource downloads.
                                    - If omitted: external URLs are blocked (default is local-only).
@@ -331,14 +370,21 @@ SYNTAX_HELP = textwrap.dedent("""\
       --size  <WIDTHxHEIGHT>       Viewport size (default: 1280x720)
       --crop  <COLSxROWS:TILES>    Grid crop, e.g. "3x9:1,27"
       --console-log                Save browser console/navigation errors to p2cxt_console.log.
-      --chrome-profile-dir [DIR]   Chrome profile dir. Empty = auto-detect.
-      --edge-profile-dir [DIR]     Edge profile dir. Empty = auto-detect.
-      --brave-profile-dir [DIR]    Brave profile dir. Empty = auto-detect.
-      --firefox-profile-dir [DIR]  Firefox profile dir. Empty = auto-detect.
-      --safari-profile-dir [DIR]   Safari profile dir (macOS). Empty = auto-detect.
-      --chromium-profile-dir [DIR] Chromium profile dir. Empty = auto-detect.
-      --webkit-profile-dir [DIR]   WebKit profile dir. Empty = auto-detect.
-                                   Only one browser profile flag may be used per run.
+      --use-chrome                 Use local profile ./browser/chrome (default if no --use-* is given).
+      --use-edge                   Use local profile ./browser/edge.
+      --use-brave                  Use local profile ./browser/brave.
+      --use-firefox                Use local profile ./browser/firefox.
+      --use-safari                 Use local profile ./browser/safari (webkit engine).
+      --use-chromium               Use local profile ./browser/chromium.
+      --use-webkit                 Use local profile ./browser/webkit.
+      --show-chrome                Show browser window (headed mode) using chrome profile; no time limit (waits for manual completion).
+      --show-edge                  Show browser window (headed mode) using edge profile; no time limit (waits for manual completion).
+      --show-brave                 Show browser window (headed mode) using brave profile; no time limit (waits for manual completion).
+      --show-firefox               Show browser window (headed mode) using firefox profile; no time limit (waits for manual completion).
+      --show-safari                Show browser window (headed mode) using safari profile; no time limit (waits for manual completion).
+      --show-chromium              Show browser window (headed mode) using chromium profile; no time limit (waits for manual completion).
+      --show-webkit                Show browser window (headed mode) using webkit profile; no time limit (waits for manual completion).
+                                   Only one --use-* and one --show-* browser can be selected per run.
       --run-js-file <PATH>         Execute JavaScript file in the opened page.
       --post-load-wait-ms <MS>     Extra wait after page load before JS/screenshot (default: 0).
       --resources-regex <REGEX>    Download resources whose URL matches REGEX.
@@ -346,15 +392,10 @@ SYNTAX_HELP = textwrap.dedent("""\
       --json                       Machine-readable JSON output (for AI callers)
     Examples:
       python3 page2context.py --help
-      python3 page2context.py --url "https://example.com"
-      python3 page2context.py --clean-temp
-      python3 page2context.py --url "https://example.com" --chrome-profile-dir ""
-      python3 page2context.py --url "https://example.com" --firefox-profile-dir ""
-      python3 page2context.py --url "https://example.com" --edge-profile-dir ""
-      python3 page2context.py --url "https://example.com" --run-js-file "./script.js"
-      python3 page2context.py --url "https://example.com" --post-load-wait-ms 750
-      python3 page2context.py --url "https://example.com" --resources-regex "\\.(css|js)(\\?|$)"
-      python3 page2context.py --url "https://example.com" --size 1440x900 --crop "2x4:1,2" --output my_capture
+      python3 page2context.py --url "http://localhost:4200" --json
+      python3 page2context.py --url "http://localhost:4200" --use-firefox --json
+      python3 page2context.py --url "http://localhost:4200" --show-chrome --json
+      python3 page2context.py --clean-temp --clean-chrome --clean-firefox --json
 """).format(version=__version__)
 class _TextArgumentParser(argparse.ArgumentParser):
     def error(self, message: str) -> None:
@@ -399,9 +440,13 @@ def parse_args():
     parser.add_argument("--size",        default="1280x720",   help="Viewport WIDTHxHEIGHT")
     parser.add_argument("--crop",        default=None,         help="Grid crop COLSxROWS:TILE[,TILE]")
     parser.add_argument("--console-log", action="store_true",  help="Save browser console/errors to p2cxt_console.log.")
-    for flag, key in PROFILE_ARG_TO_KEY.items():
-        parser.add_argument(f"--{flag.replace('_', '-')}", nargs="?", const="", default=None, dest=flag,
-                            help=f"{key.capitalize()} user-data dir; pass empty to auto-detect.")
+    for browser in BROWSER_KEYS:
+        parser.add_argument(f"--use-{browser}", action="store_true", dest=f"use_{browser}",
+                            help=f"Use local profile ./browser/{browser}")
+        parser.add_argument(f"--show-{browser}", action="store_true", dest=f"show_{browser}",
+                            help=f"Show {browser} window (headed mode).")
+        parser.add_argument(f"--clean-{browser}", action="store_true", dest=f"clean_{browser}",
+                            help=f"Delete local profile ./browser/{browser}")
     parser.add_argument("--run-js-file",       default=None,           help="JS file to execute in the opened page.")
     parser.add_argument("--post-load-wait-ms", default="0",            help="Wait (ms) after page load.")
     parser.add_argument("--resources-regex",   default=None,           help="Download resources whose URL matches this regex.")
@@ -412,14 +457,35 @@ def parse_args():
     )
     parser.add_argument("--json",              action="store_true",    help="Emit JSON output.")
     args = parser.parse_args()
-    if not args.clean_temp and not args.url:
-        _error_exit(EXIT_BAD_ARGS, "Argument error: --url is required unless using only --clean-temp.",
-                    hint="Use --clean-temp alone to clean cache, or provide --url for capture.")
-    selected = [name for name in PROFILE_ARG_TO_KEY if getattr(args, name) is not None]
-    if len(selected) > 1:
-        flags = ", ".join(f"--{n.replace('_', '-')}" for n in selected)
-        _error_exit(EXIT_BAD_ARGS, "Argument error: only one browser profile flag can be used per run.",
-                    hint=f"Received: {flags}")
+
+    selected_use = [b for b in BROWSER_KEYS if getattr(args, f"use_{b}")]
+    selected_show = [b for b in BROWSER_KEYS if getattr(args, f"show_{b}")]
+    selected_clean = [b for b in BROWSER_KEYS if getattr(args, f"clean_{b}")]
+
+    if len(selected_use) > 1:
+        flags = ", ".join(f"--use-{b}" for b in selected_use)
+        _error_exit(EXIT_BAD_ARGS, "Argument error: only one --use-* browser can be selected per run.", hint=f"Received: {flags}")
+
+    if len(selected_show) > 1:
+        flags = ", ".join(f"--show-{b}" for b in selected_show)
+        _error_exit(EXIT_BAD_ARGS, "Argument error: only one --show-* browser can be selected per run.", hint=f"Received: {flags}")
+
+    selected_browser = selected_use[0] if selected_use else (selected_show[0] if selected_show else "chrome")
+    if selected_show and selected_use and selected_show[0] != selected_use[0]:
+        _error_exit(
+            EXIT_BAD_ARGS,
+            "Argument error: --show-* browser must match --use-* browser when both are provided.",
+            hint=f"Received --use-{selected_use[0]} with --show-{selected_show[0]}",
+        )
+
+    args.selected_browser = selected_browser
+    args.headed = bool(selected_show)
+    args.clean_browsers = selected_clean
+
+    if not args.clean_temp and not args.clean_browsers and not args.url:
+        _error_exit(EXIT_BAD_ARGS, "Argument error: --url is required unless using clean-only flags.",
+                    hint="Use --clean-temp/--clean-<browser> alone to clean, or provide --url for capture.")
+
     _json_mode = args.json
     if args.url:
         parsed_url = urlparse(args.url)
@@ -670,6 +736,120 @@ def _cleanup_temp_copy(copy_root: Optional[pathlib.Path]) -> bool:
         return True
     except OSError:
         return False
+# ---------------------------------------------------------------------------
+# Browser profile local helpers
+# ---------------------------------------------------------------------------
+def _format_bytes(num_bytes: int) -> str:
+    units = ["B", "KB", "MB", "GB", "TB"]
+    n = float(max(0, num_bytes))
+    for unit in units:
+        if n < 1024 or unit == units[-1]:
+            if unit == "B":
+                return f"{int(n)} {unit}"
+            return f"{n:.2f} {unit}"
+        n /= 1024.0
+    return f"{int(num_bytes)} B"
+
+
+def _dir_size_bytes(path: pathlib.Path) -> int:
+    total = 0
+    for root, _, files in os.walk(path):
+        for name in files:
+            fp = pathlib.Path(root) / name
+            try:
+                if fp.is_file():
+                    total += fp.stat().st_size
+            except OSError:
+                continue
+    return total
+
+
+def _local_browser_profile_dir(browser_key: str) -> pathlib.Path:
+    return (BROWSER_PROFILE_ROOT / browser_key).resolve()
+
+
+def _ensure_local_browser_profile_dir(browser_key: str) -> pathlib.Path:
+    profile_dir = _local_browser_profile_dir(browser_key)
+    try:
+        profile_dir.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        _error_exit(EXIT_IO_ERR, f"Cannot create local browser profile dir: {exc}", path=str(profile_dir))
+    return profile_dir
+
+
+def _clean_selected_browser_profiles(browser_keys: list[str]) -> dict:
+    cleaned_dirs: list[str] = []
+    failed_dirs: list[str] = []
+    cleaned_details: list[dict] = []
+    total_reclaimed = 0
+    for browser in browser_keys:
+        path = _local_browser_profile_dir(browser)
+        if not path.exists():
+            continue
+        if not path.is_dir():
+            failed_dirs.append(f"{path} :: not a directory")
+            continue
+        size_before = _dir_size_bytes(path)
+        try:
+            shutil.rmtree(path)
+            cleaned_dirs.append(str(path))
+            total_reclaimed += size_before
+            cleaned_details.append({
+                "browser": browser,
+                "path": str(path),
+                "reclaimed_bytes": size_before,
+                "reclaimed_human": _format_bytes(size_before),
+            })
+        except OSError as exc:
+            failed_dirs.append(f"{path} :: {exc}")
+    return {
+        "cleaned_browser_dirs": cleaned_dirs,
+        "cleaned_browser_details": cleaned_details,
+        "failed_browser_dirs": failed_dirs,
+        "cleaned_browser_count": len(cleaned_dirs),
+        "reclaimed_bytes": total_reclaimed,
+        "reclaimed_human": _format_bytes(total_reclaimed),
+    }
+def _pause_for_manual_interaction_if_headed(args, browser_key: str) -> None:
+    if not getattr(args, "headed", False):
+        return
+    if not sys.stdin.isatty():
+        return
+    # In interactive headed mode we intentionally wait indefinitely for manual login/MFA.
+    print(
+        f"[info] Headed mode enabled for {browser_key}. "
+        "This uses the local project profile (./browser/<browser>), not your regular browser profile."
+    )
+    print("[info] Complete login/MFA manually in the opened window, then press Enter to capture.")
+    try:
+        input()
+    except EOFError:
+        return
+
+
+def _capture_screenshot_resilient(page, screenshot_path: pathlib.Path) -> dict:
+    try:
+        page.screenshot(path=str(screenshot_path), full_page=True)
+        return {"mode": "full_page", "fallback_used": False}
+    except PlaywrightError as first_exc:
+        first_reason = str(first_exc).splitlines()[0]
+        # Fallback to viewport screenshot when full-page capture fails (common on complex sites).
+        page.wait_for_timeout(300)
+        try:
+            page.screenshot(path=str(screenshot_path), full_page=False)
+            return {
+                "mode": "viewport",
+                "fallback_used": True,
+                "fallback_reason": first_reason,
+            }
+        except PlaywrightError as second_exc:
+            second_reason = str(second_exc).splitlines()[0]
+            raise PlaywrightError(
+                "Page.screenshot failed in full_page and viewport modes. "
+                f"full_page: {first_reason} | viewport: {second_reason}"
+            )
+
+
 def _cleanup_prefixed_files(output_dir: pathlib.Path) -> None:
     try:
         for path in output_dir.glob(f"{OUTPUT_PREFIX}*"):
@@ -677,6 +857,8 @@ def _cleanup_prefixed_files(output_dir: pathlib.Path) -> None:
                 path.unlink()
     except OSError as exc:
         _error_exit(EXIT_IO_ERR, f"Cannot clean output folder: {exc}", path=str(output_dir))
+
+
 # ---------------------------------------------------------------------------
 # Tile extraction
 # ---------------------------------------------------------------------------
@@ -698,11 +880,13 @@ def extract_tiles(full_screenshot: "pathlib.Path | str", output_dir: pathlib.Pat
         col, row = zi % cols, zi // cols
         left, upper = col * tile_w, row * tile_h
         right, lower = min(left + tile_w, img_w), min(upper + tile_h, img_h)
-        tile_img  = img.crop((left, upper, right, lower))
+        tile_img = img.crop((left, upper, right, lower))
         tile_path = output_dir / f"{OUTPUT_PREFIX}tile_{tile_idx}.png"
         tile_img.save(tile_path)
         paths.append(tile_path)
     return paths
+
+
 # ---------------------------------------------------------------------------
 # Regex / resource helpers
 # ---------------------------------------------------------------------------
@@ -713,9 +897,13 @@ def _compile_regex_or_exit(pattern: Optional[str]) -> Optional["re.Pattern[str]"
         return re.compile(pattern)
     except re.error as exc:
         _error_exit(EXIT_BAD_ARGS, f"Invalid --resources-regex value: {pattern!r}", reason=str(exc))
+
+
 def _looks_downloadable_url(url: str) -> bool:
     parsed = urlparse(url)
     return parsed.scheme in {"http", "https"} and bool(parsed.netloc)
+
+
 def _extract_resource_candidates_from_html(html: str, base_url: str) -> set[str]:
     candidates: set[str] = set()
     for match in re.findall(r"(?:src|href)\s*=\s*['\"]([^'\"]+)['\"]", html, flags=re.IGNORECASE):
@@ -728,6 +916,8 @@ def _extract_resource_candidates_from_html(html: str, base_url: str) -> set[str]
         if _looks_downloadable_url(abs_url):
             candidates.add(abs_url)
     return candidates
+
+
 def _download_resources(
     urls: list[str],
     output_dir: pathlib.Path,
@@ -735,23 +925,15 @@ def _download_resources(
     allowed_host: str = "",
     allow_external_raw: Optional[str] = None,
 ) -> tuple[list[pathlib.Path], list[str], list[str]]:
-    """Download resources.
-
-    Returns: (downloaded_paths, failures, skipped_blocked)
-    """
     import urllib.request as _urllib_req
 
-    # Security: custom opener that does NOT follow redirects, to prevent SSRF via open redirects.
     class _NoRedirectHandler(_urllib_req.HTTPRedirectHandler):
         def redirect_request(self, *args, **kwargs):  # type: ignore[override]
-            return None  # Block all redirects
+            return None
 
     opener = _urllib_req.build_opener(_NoRedirectHandler)
-
     allow_all_external = allow_external_raw is not None and allow_external_raw == ""
     allow_regex = _compile_allow_external_regex_or_exit(allow_external_raw)
-
-    # Normalise allowed_host for comparison (strip port)
     allowed_host_norm = (allowed_host or "").lower().split(":")[0]
 
     downloaded: list[pathlib.Path] = []
@@ -760,25 +942,17 @@ def _download_resources(
 
     for idx, url in enumerate(urls, start=1):
         parsed = urlparse(url)
-
-        # Security: only allow http/https — no file://, ftp://, etc.
         if parsed.scheme.lower() not in ALLOWED_URL_SCHEMES:
             failures.append(f"{url} :: blocked: scheme '{parsed.scheme}' not allowed")
             continue
 
         resource_host = (parsed.hostname or "").lower()
-
-        # External URL policy (applies even if host isn't private).
         if resource_host and not _host_is_local_allowed_default(resource_host):
-            # For resources, we also allow the same-host-as-target as a convenience, but it still
-            # counts as external unless explicitly allowed.
             if resource_host != allowed_host_norm:
                 if not _external_url_allowed(url, allow_regex, allow_all_external):
                     skipped.append(url)
                     continue
 
-        # Security: block requests to private/loopback/link-local hosts (SSRF protection).
-        # Exception: the host of the target --url is always trusted (user navigated there explicitly).
         if resource_host != allowed_host_norm and _is_private_host(resource_host):
             failures.append(f"{url} :: blocked: private/internal host")
             continue
@@ -801,6 +975,7 @@ def _download_resources(
 
     return downloaded, failures, skipped
 
+
 # ---------------------------------------------------------------------------
 # State management
 # ---------------------------------------------------------------------------
@@ -809,8 +984,12 @@ def _state_dir() -> pathlib.Path:
     if custom:
         return pathlib.Path(custom).expanduser()
     return pathlib.Path.home() / ".cache" / "page2context"
+
+
 def _state_file() -> pathlib.Path:
     return _state_dir() / STATE_FILE_NAME
+
+
 def _load_artifact_history() -> list[str]:
     sf = _state_file()
     if not sf.exists():
@@ -820,6 +999,8 @@ def _load_artifact_history() -> list[str]:
         return [p for p in raw if isinstance(p, str)] if isinstance(raw, list) else []
     except (OSError, json.JSONDecodeError):
         return []
+
+
 def _save_artifact_history(paths: list[str]) -> None:
     sd = _state_dir()
     sf = _state_file()
@@ -828,16 +1009,20 @@ def _save_artifact_history(paths: list[str]) -> None:
         sf.write_text(json.dumps(paths, ensure_ascii=False, indent=2), encoding="utf-8")
     except OSError as exc:
         _error_exit(EXIT_IO_ERR, f"Cannot write artifact history: {exc}", path=str(sf))
+
+
 def _record_artifacts(paths: list[str]) -> None:
     existing = _load_artifact_history()
-    deduped  = list(dict.fromkeys(existing + paths))
-    alive    = [p for p in deduped if pathlib.Path(p).exists()]
+    deduped = list(dict.fromkeys(existing + paths))
+    alive = [p for p in deduped if pathlib.Path(p).exists()]
     _save_artifact_history(alive)
+
+
 def _clean_historical_artifacts() -> dict:
     history = _load_artifact_history()
     cleaned: list[str] = []
-    failed:  list[str] = []
-    kept:    list[str] = []
+    failed: list[str] = []
+    kept: list[str] = []
     for entry in history:
         path = pathlib.Path(entry)
         if not path.exists():
@@ -853,12 +1038,12 @@ def _clean_historical_artifacts() -> dict:
             kept.append(str(path))
     _save_artifact_history(kept)
     return {"cleaned": cleaned, "failed": failed, "cleaned_files": len(cleaned)}
+
+
 def _browser_install_hint(exc: "PlaywrightError", browser_key: str) -> Optional[str]:
-    """Return an install hint if the error is a missing browser executable, else None."""
     raw = str(exc)
     if "Executable doesn't exist" in raw or "executable doesn't exist" in raw:
         pw_engine = PROFILE_KEY_TO_BROWSER_TYPE.get(browser_key, browser_key)
-        # Map browser key to the right make target
         make_target_map = {
             "chrome": "setup-chromium", "chromium": "setup-chromium",
             "edge": "setup-edge", "brave": "setup-brave",
@@ -877,24 +1062,15 @@ def _browser_install_hint(exc: "PlaywrightError", browser_key: str) -> Optional[
 
 LOCK_FILE_NAME = "clean_temp.lock"
 DEFAULT_CLEAN_WAIT_SECONDS = 60
-LOCK_STALE_SECONDS = 6 * 60 * 60  # 6h safety
+LOCK_STALE_SECONDS = 6 * 60 * 60
 
 
 def _lock_file_path() -> pathlib.Path:
-    # Always a concrete path under the state dir.
-    p = _state_dir() / LOCK_FILE_NAME
-    if p is None:  # defensive (should never happen)
-        raise RuntimeError("Internal error: lock file path is None")
-    return p
+    return _state_dir() / LOCK_FILE_NAME
 
 
 def _acquire_clean_lock(wait_seconds: int = DEFAULT_CLEAN_WAIT_SECONDS, poll_seconds: float = 0.25) -> Optional[pathlib.Path]:
-    """Acquire a lock so --clean-temp doesn't race with another running instance.
-
-    This is intentionally a simple filesystem lock (exclusive create) stored in the state dir.
-    """
-    lock_path: pathlib.Path = _lock_file_path()
-    assert lock_path is not None
+    lock_path = _lock_file_path()
     deadline = time.time() + max(0, int(wait_seconds))
     while True:
         try:
@@ -905,7 +1081,6 @@ def _acquire_clean_lock(wait_seconds: int = DEFAULT_CLEAN_WAIT_SECONDS, poll_sec
                 f.write(f"started={time.time()}\n")
             return lock_path
         except FileExistsError:
-            # If lock looks stale, remove it.
             try:
                 st = lock_path.stat()
                 if time.time() - st.st_mtime > LOCK_STALE_SECONDS:
@@ -913,15 +1088,13 @@ def _acquire_clean_lock(wait_seconds: int = DEFAULT_CLEAN_WAIT_SECONDS, poll_sec
                     continue
             except OSError:
                 pass
-
             if time.time() >= deadline:
                 _error_exit(
                     EXIT_IO_ERR,
                     "Timed out waiting for another page2context instance to finish (clean-temp lock).",
                     hint=(
                         "Another page2context run seems to be active. Wait and retry. "
-                        "If you're sure no run is active, delete the lock file: "
-                        f"{lock_path}"
+                        f"If you're sure no run is active, delete the lock file: {lock_path}"
                     ),
                 )
             time.sleep(poll_seconds)
@@ -937,7 +1110,6 @@ def _release_clean_lock(lock_path: Optional[pathlib.Path]) -> None:
 
 
 def _is_system_temp_child(path: pathlib.Path) -> bool:
-    """Return True if `path` is inside the system temp directory (e.g. /tmp)."""
     try:
         tmp_root = pathlib.Path(tempfile.gettempdir()).resolve()
         path.resolve().relative_to(tmp_root)
@@ -947,28 +1119,15 @@ def _is_system_temp_child(path: pathlib.Path) -> bool:
 
 
 def _clean_temp_root_p2cxt_artifacts() -> dict:
-    """Clean p2cxt artifacts under the system temp directory only.
-
-    Rules:
-      - Only look inside the system temp root (tempfile.gettempdir()).
-      - Only consider directories whose name starts with 'p2cxt_'.
-      - Inside those directories, delete files that start with OUTPUT_PREFIX (p2cxt_...).
-      - After file cleanup, remove any empty directories named 'p2cxt_*'.
-
-    Returns a dict with cleaned/failed counts and lists, similar to history cleanup.
-    """
     tmp_root = pathlib.Path(tempfile.gettempdir()).resolve()
     cleaned: list[str] = []
     failed: list[str] = []
-
-    # 2.1) Delete files (recursively) under p2cxt_* dirs.
     try:
         candidates = [p for p in tmp_root.iterdir() if p.is_dir() and p.name.startswith("p2cxt_")]
     except OSError as exc:
         return {"temp_cleaned": [], "temp_failed": [f"{tmp_root} :: {exc}"], "temp_cleaned_files": 0, "temp_cleaned_dirs": 0}
 
     for d in candidates:
-        # Safety: verify directory is truly under tmp_root.
         if not _is_system_temp_child(d):
             continue
         try:
@@ -982,11 +1141,9 @@ def _clean_temp_root_p2cxt_artifacts() -> dict:
         except OSError as exc:
             failed.append(f"{d} :: {exc}")
 
-    # 2.2) Remove empty p2cxt_* directories (bottom-up).
     cleaned_dirs: list[str] = []
     for d in candidates:
         try:
-            # Walk bottom-up to remove empty nested p2cxt_* dirs too.
             for sub in sorted([p for p in d.rglob("*") if p.is_dir() and p.name.startswith("p2cxt_")], key=lambda p: len(str(p)), reverse=True):
                 if not _is_system_temp_child(sub):
                     continue
@@ -996,12 +1153,10 @@ def _clean_temp_root_p2cxt_artifacts() -> dict:
                         cleaned_dirs.append(str(sub))
                 except OSError:
                     pass
-
             if not any(d.iterdir()):
                 d.rmdir()
                 cleaned_dirs.append(str(d))
         except OSError:
-            # Ignore non-empty or permission errors; failures are not critical.
             continue
 
     return {
@@ -1011,35 +1166,44 @@ def _clean_temp_root_p2cxt_artifacts() -> dict:
         "temp_cleaned_dirs": len(cleaned_dirs),
         "temp_cleaned_dirs_list": cleaned_dirs,
     }
-
 def main() -> None:
     global _profile_source_output
     args = parse_args()
+
     clean_result = None
+    temp_clean_result = None
+    browser_clean_result = None
+
     if args.clean_temp:
         lock_path: Optional[pathlib.Path] = None
         try:
-            # 1) wait for other instances to finish
             lock_path = _acquire_clean_lock()
-
-            # 2) clean historical list (state dir)
             clean_result = _clean_historical_artifacts()
-
-            # 2) additionally scan temp root strictly (/tmp or platform temp)
             temp_clean_result = _clean_temp_root_p2cxt_artifacts()
         finally:
             _release_clean_lock(lock_path)
 
-        if not args.url:
-            _success(
-                "Historical temporary artifacts cleaned.",
-                version=__version__,
-                **clean_result,
-                **temp_clean_result,
-                output=[],
-                files=[],
-            )
-            return
+    if args.clean_browsers:
+        browser_clean_result = _clean_selected_browser_profiles(args.clean_browsers)
+
+    if not args.url:
+        payload: dict = {
+            "version": __version__,
+            "output": [],
+            "files": [],
+        }
+        if clean_result is not None:
+            payload.update(clean_result)
+        if temp_clean_result is not None:
+            payload.update(temp_clean_result)
+        if browser_clean_result is not None:
+            payload.update(browser_clean_result)
+        if clean_result is not None:
+            _success("Historical temporary artifacts cleaned.", **payload)
+        elif browser_clean_result is not None:
+            _success("Browser profile directories cleaned.", **payload)
+        return
+
     try:
         viewport_w, viewport_h = parse_size(args.size)
     except _CliArgError as exc:
@@ -1048,24 +1212,21 @@ def main() -> None:
         post_load_wait_ms = parse_wait_ms(args.post_load_wait_ms)
     except _CliArgError as exc:
         _error_exit(EXIT_BAD_ARGS, exc.message, **exc.extra)
-    resources_regex              = _compile_regex_or_exit(args.resources_regex)
-    js_file_path, js_source      = _load_js_file(args.run_js_file)
-    selected_profile_key, resolved_profile_source = _selected_profile(args)
-    _profile_source_output       = str(resolved_profile_source) if resolved_profile_source is not None else ""
-    profile_source_dir, profile_copy_dir, profile_copy_root = _prepare_profile_temp_copy(
-        selected_profile_key, resolved_profile_source)
-    profile_copy_cleaned  = False
-    profile_used          = False
-    selected_browser_type = PROFILE_KEY_TO_BROWSER_TYPE.get(selected_profile_key or "", "chromium")
 
-    # Default output dir: create a unique temp folder per run unless --output was provided.
+    resources_regex = _compile_regex_or_exit(args.resources_regex)
+    js_file_path, js_source = _load_js_file(args.run_js_file)
+
+    selected_profile_key = args.selected_browser
+    profile_source_dir = _ensure_local_browser_profile_dir(selected_profile_key)
+    _profile_source_output = str(profile_source_dir)
+    profile_used = False
+    selected_browser_type = PROFILE_KEY_TO_BROWSER_TYPE.get(selected_profile_key, "chromium")
+
     if args.output:
         output_dir = pathlib.Path(args.output)
     else:
         try:
-            output_dir = pathlib.Path(
-                tempfile.mkdtemp(prefix="p2cxt_run_", dir=tempfile.gettempdir())
-            )
+            output_dir = pathlib.Path(tempfile.mkdtemp(prefix="p2cxt_run_", dir=tempfile.gettempdir()))
         except OSError as exc:
             _error_exit(
                 EXIT_IO_ERR,
@@ -1078,17 +1239,20 @@ def main() -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
     if output_already_exists:
         _cleanup_prefixed_files(output_dir)
-    full_screenshot  = output_dir / f"{OUTPUT_PREFIX}screenshot.png"
+
+    full_screenshot = output_dir / f"{OUTPUT_PREFIX}screenshot.png"
     console_log_path = output_dir / f"{OUTPUT_PREFIX}console.log"
+
     crop_parsed = None
     if args.crop:
         try:
             crop_parsed = parse_crop(args.crop)
         except _CliArgError as exc:
             _error_exit(EXIT_BAD_ARGS, exc.message, **exc.extra)
-    # -- Browser capture ---------------------------------------------------
+
     html           = ""
     script_result  = None
+    screenshot_meta = {"mode": "full_page", "fallback_used": False}
     console_lines: list[str] = []
     def _log_console(line: str) -> None:
         console_lines.append(line)
@@ -1096,45 +1260,21 @@ def main() -> None:
     try:
         with sync_playwright() as p:
             browser_type = getattr(p, selected_browser_type)
-            context = None
-            browser = None
-            if profile_copy_dir is not None:
-                try:
-                    # Safety: always use the temp COPY (profile_copy_dir), never the original source.
-                    # The source profile directory is read-only from our perspective — shutil.copytree
-                    # only reads it; the browser never touches it.
-                    context = browser_type.launch_persistent_context(
-                        user_data_dir=str(profile_copy_dir), headless=True)
-                    page = context.pages[0] if context.pages else context.new_page()
-                    profile_used = True
-                except PlaywrightError as exc:
-                    hint = _browser_install_hint(exc, selected_profile_key or selected_browser_type)
-                    if hint:
-                        _error_exit(EXIT_NAVIGATION_ERR, hint,
-                                    fix=f"{sys.executable} -m playwright install {selected_browser_type}")
-                    if args.console_log:
-                        _log_console(f"[profile:fallback] {exc}")
-                    try:
-                        browser  = browser_type.launch()
-                        context  = browser.new_context()
-                        page     = context.new_page()
-                    except PlaywrightError as exc2:
-                        hint2 = _browser_install_hint(exc2, selected_profile_key or selected_browser_type)
-                        if hint2:
-                            _error_exit(EXIT_NAVIGATION_ERR, hint2,
-                                        fix=f"{sys.executable} -m playwright install {selected_browser_type}")
-                        raise
-            else:
-                try:
-                    browser  = browser_type.launch()
-                    context  = browser.new_context()
-                    page     = context.new_page()
-                except PlaywrightError as exc:
-                    hint = _browser_install_hint(exc, selected_profile_key or selected_browser_type)
-                    if hint:
-                        _error_exit(EXIT_NAVIGATION_ERR, hint,
-                                    fix=f"{sys.executable} -m playwright install {selected_browser_type}")
-                    raise
+            try:
+                launch_kwargs = {
+                    "user_data_dir": str(profile_source_dir),
+                    "headless": not args.headed,
+                }
+                launch_kwargs.update(_resolve_chromium_launch_overrides(selected_profile_key))
+                context = browser_type.launch_persistent_context(**launch_kwargs)
+                page = context.pages[0] if context.pages else context.new_page()
+                profile_used = True
+            except PlaywrightError as exc:
+                hint = _browser_install_hint(exc, selected_profile_key or selected_browser_type)
+                if hint:
+                    _error_exit(EXIT_NAVIGATION_ERR, hint,
+                                fix=f"{sys.executable} -m playwright install {selected_browser_type}")
+                raise
             if args.console_log:
                 page.on("console",       lambda msg: _log_console(f"[console:{msg.type}] {msg.text}"))
                 page.on("pageerror",     lambda err: _log_console(f"[pageerror] {err}"))
@@ -1147,6 +1287,7 @@ def main() -> None:
             page.goto(args.url, wait_until="networkidle", timeout=30_000)
             if post_load_wait_ms > 0:
                 page.wait_for_timeout(post_load_wait_ms)
+            _pause_for_manual_interaction_if_headed(args, selected_profile_key)
             if js_source is not None:
                 try:
                     script_result = page.evaluate(
@@ -1166,9 +1307,19 @@ def main() -> None:
                                 f"JS execution failed for file: {args.run_js_file}",
                                 reason=str(exc).splitlines()[0],
                                 js_file=str(js_file_path) if js_file_path else args.run_js_file)
-            page.screenshot(path=str(full_screenshot), full_page=True)
+            screenshot_meta = _capture_screenshot_resilient(page, full_screenshot)
             html = page.content()
-            context.close()
+            if args.headed:
+                # Keep the visible browser open indefinitely until the user closes it manually.
+                print("[info] Capture completed. Close the browser window manually to finish.")
+                try:
+                    page.wait_for_event("close", timeout=0)
+                except PlaywrightError:
+                    pass
+            try:
+                context.close()
+            except PlaywrightError:
+                pass
     except PlaywrightError as exc:
         if args.console_log:
             _log_console(f"[navigation:error] {exc}")
@@ -1184,13 +1335,6 @@ def main() -> None:
         elif "ERR_INTERNET_DISCONNECTED" in raw: reason = "No internet connection."
         else: reason = raw.splitlines()[0]
         _error_exit(EXIT_NAVIGATION_ERR, f"Could not load URL: {args.url}", reason=reason, url=args.url)
-    finally:
-        # Safety: always delete the temp profile copy — success, error, or exception.
-        # The original source profile is never modified and remains untouched.
-        profile_copy_cleaned = _cleanup_temp_copy(profile_copy_root)
-        if profile_copy_root is not None and not profile_copy_cleaned:
-            _error_exit(EXIT_IO_ERR, "Cannot remove browser profile temp copy after run.",
-                        path=str(profile_copy_root))
     if args.console_log:
         _write_console_log(console_log_path, console_lines)
     # -- Tile extraction ---------------------------------------------------
@@ -1244,13 +1388,12 @@ def main() -> None:
                 f.write("\n## Executed JS\n\n")
                 f.write(f"- File: `{js_file_path}`\n")
                 f.write(f"- Result: `{script_result}`\n")
-            if profile_source_dir is not None and profile_copy_dir is not None:
-                f.write("\n## Browser Profile Copy\n\n")
+            if profile_source_dir is not None:
+                f.write("\n## Browser Profile\n\n")
                 f.write(f"- Browser: `{selected_profile_key}`\n")
-                f.write(f"- Source: `{profile_source_dir}`\n")
-                f.write(f"- Temp copy: `{profile_copy_dir}`\n")
+                f.write(f"- Local profile dir: `{profile_source_dir}`\n")
                 f.write(f"- Used as persistent profile: `{profile_used}`\n")
-                f.write(f"- Copy cleaned: `{profile_copy_cleaned}`\n")
+                f.write(f"- Headless mode: `{not args.headed}`\n")
             if resources_regex is not None:
                 f.write("\n## Downloaded Resources\n\n")
                 f.write(f"Regex: `{args.resources_regex}`\n\n")
@@ -1290,24 +1433,30 @@ def main() -> None:
     }
     if clean_result is not None:
         result["cleanup_before_run"] = clean_result
+    if temp_clean_result is not None:
+        result["cleanup_temp_root"] = temp_clean_result
+    if browser_clean_result is not None:
+        result["cleanup_browser_profiles"] = browser_clean_result
     if args.console_log:
         result["console_log"] = str(console_log_path)
     if js_file_path is not None:
         result["script"] = {"file": str(js_file_path), "result": script_result}
-    if profile_source_dir is not None and profile_copy_dir is not None:
+    if screenshot_meta.get("fallback_used"):
+        result["screenshot_capture"] = screenshot_meta
+    if profile_source_dir is not None:
         result["browser_profile"] = {
-            "browser":   selected_profile_key,
-            "source":    str(profile_source_dir),
-            "temp_copy": str(profile_copy_dir),
-            "used":      profile_used,
-            "cleaned":   profile_copy_cleaned,
+            "browser": selected_profile_key,
+            "source": str(profile_source_dir),
+            "local_dir": str(profile_source_dir),
+            "used": profile_used,
+            "headless": (not args.headed),
         }
         if selected_profile_key == "chrome":
             result["chrome_profile"] = {
-                "source":    str(profile_source_dir),
-                "temp_copy": str(profile_copy_dir),
-                "used":      profile_used,
-                "cleaned":   profile_copy_cleaned,
+                "source": str(profile_source_dir),
+                "local_dir": str(profile_source_dir),
+                "used": profile_used,
+                "headless": (not args.headed),
             }
     created_files: list[pathlib.Path] = [full_screenshot, md_path, html_path]
     if args.console_log:
@@ -1335,6 +1484,37 @@ def main() -> None:
             "skip_reason":  "external URLs blocked by default; use --allow-external-urls to permit",
         }
     _success("Page captured successfully.", **result)
+def _resolve_chromium_launch_overrides(browser_key: str) -> dict:
+    """Return optional Playwright launch args for Chromium-based browsers.
+
+    Some login providers (for example Google) are stricter with embedded/automation
+    contexts, so we prefer branded channels when available.
+    """
+    overrides: dict = {}
+    if browser_key == "chrome":
+        if shutil.which("google-chrome") or shutil.which("google-chrome-stable"):
+            overrides["channel"] = "chrome"
+    elif browser_key == "edge":
+        if shutil.which("microsoft-edge") or shutil.which("microsoft-edge-stable"):
+            overrides["channel"] = "msedge"
+    elif browser_key == "brave":
+        brave_candidates = [
+            "/usr/bin/brave-browser",
+            "/usr/bin/brave",
+            "/snap/bin/brave",
+            "/opt/brave.com/brave/brave-browser",
+        ]
+        for candidate in brave_candidates:
+            if pathlib.Path(candidate).exists():
+                overrides["executable_path"] = candidate
+                break
+
+    if browser_key in {"chrome", "edge", "brave", "chromium"}:
+        # Keep automation defaults lighter for sites that reject automated contexts.
+        overrides["ignore_default_args"] = ["--enable-automation"]
+        overrides["args"] = ["--disable-blink-features=AutomationControlled"]
+
+    return overrides
 if __name__ == "__main__":
     try:
         main()

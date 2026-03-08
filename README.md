@@ -41,7 +41,7 @@ Prompt used:
 
 > Use page2context to load github.com, wait 5 seconds, then capture tile #5 of a 4×10 grid of the page and retrieve the copilot* CSS file. Show me the capture and compare that CSS file with the one existing in the project and show me the differences.
 
-> Important for this example: the browser profile was already logged in to GitHub beforehand. To prepare that state, run an interactive session first with `--show-chrome`, complete login, close the window, and then run the capture command.
+> Important for this example: the browser profile was already logged in to GitHub beforehand. To prepare that state, run an interactive session first with `--open chrome`, complete login, close the window, and then run the capture command.
 
 Example screenshot from that flow:
 
@@ -52,7 +52,7 @@ Example screenshot from that flow:
 ## Requirements
 
 - Python 3.11+
-- Chromium (installed automatically via `make setup`)
+- Chromium (installed by the installer script)
 - Other browsers optional — install only what you need
 
 ---
@@ -62,36 +62,26 @@ Example screenshot from that flow:
 ```bash
 git clone https://github.com/mfuentescas/page-2-context.git
 cd page2context
-make setup
+./install-page2context.sh
 ```
 
-`make setup` installs Python dependencies and Chromium — the minimum required to run the tool.
+Windows users:
 
-### Installing additional browsers
-
-To capture pages using Firefox, Edge, Brave, or WebKit profiles, the corresponding Playwright browser must be installed. Run the interactive installer to choose which ones you need:
-
-```bash
-make setup-browsers   # prompts Y/n for each browser (default: Y)
+```bat
+install-page2context.cmd
 ```
 
-Or install them individually:
+Public launchers:
 
-```bash
-make setup-firefox    # Firefox
-make setup-edge       # Microsoft Edge
-make setup-webkit     # WebKit (Safari engine)
-make setup-brave      # Brave (uses Chromium engine — same as make setup-chromium)
-```
-
-> If you see an error like `Executable doesn't exist at ...firefox...`, just run `make setup-firefox` (or the corresponding command for your browser).
+- Linux/macOS: `./run-page2context.sh`
+- Windows: `run-page2context.cmd`
 
 ---
 
 ## Usage
 
 ```bash
-python3 page2context.py [--url "<URL>"] [OPTIONS]
+./run-page2context.sh [--url "<URL>"] [OPTIONS]
 ```
 
 Running with no arguments prints full usage help.
@@ -100,20 +90,21 @@ Running with no arguments prints full usage help.
 
 | Parameter | Required | Default | Description |
 |-----------|----------|---------|-------------|
-| `--url "<URL>"` | ⚠️ | — | URL to capture. **Required for capture mode**, optional when using `--show-*` interactive mode. |
+| `--url "<URL>"` | ⚠️ | — | URL to capture. **Required for capture mode**, optional when using `--open <browser>` interactive mode. |
 | `--allow-external-urls [regex]` | ❌ | *(none)* | **Disabled by default**: only localhost/127.0.0.1/::1 and private/local IP literals are allowed. Use this flag to opt into external URLs for `--url` and for `--resources-regex` downloads. Pass empty (`""`) to allow all external URLs, or a regex to restrict allowed URLs. |
 | `--clean-temp` | ❌ | *(flag)* | Clean historical `p2cxt_*` artifacts tracked in cache |
 | `--size <WxH>` | ❌ | `1280x720` | Viewport size, e.g. `1920x1080` |
 | `--crop <spec>` | ❌ | *(none)* | Grid crop — see below |
 | `--console-log` | ❌ | *(flag)* | Capture browser console/page/navigation errors into `p2cxt_console.log` |
-| `--use-<browser>` | ❌ | `chrome` | Select local browser profile `./browser/<browser>`. Allowed values for `<browser>`: `chrome`, `edge`, `brave`, `firefox`, `safari`, `chromium`, `webkit`. |
-| `--show-<browser>` | ❌ | *(off)* | Open interactive browser session for `<browser>` using the same profile folder pattern; close the window when done. |
-| `--clean-<browser>` | ❌ | *(flag)* | Remove local browser profile directory `./browser/<browser>` for the selected browser value. |
-| | | | ⚠️ Use only one `--use-*` and one `--show-*` per run. If both are set, they must target the same browser. |
+| `--capture <browser>` | ❌ | `chrome` | Select local browser profile `./browser/<browser>`. Allowed values for `<browser>`: `chrome`, `edge`, `brave`, `firefox`, `safari`, `chromium`, `webkit`. |
+| `--open <browser>` | ❌ | *(off)* | Open interactive browser session for `<browser>` using the same profile folder pattern; close the window when done. |
+| `--clean <browser>` | ❌ | *(flag)* | Remove local browser profile directory `./browser/<browser>` for the selected browser value. |
+| | | | ⚠️ Use only one `--capture <browser>` and one `--open <browser>` per run. If both are set, they must target the same browser. |
 | `--run-js-file <path>` | ❌ | *(none)* | Execute a JS file inside the opened page and wait for completion |
 | `--post-load-wait-ms <ms>` | ❌ | `0` | Extra wait after page load and before `--run-js-file`/screenshot (useful for animations) |
 | `--resources-regex <regex>` | ❌ | *(none)* | Download matching resources seen in HTML or browser traffic. **Use this whenever you ask to retrieve CSS/JS/assets (for example `copilot*` CSS).** |
 | `--output <dir>` | ❌ | *(auto)* | Output folder. If omitted, a **new unique temp directory** is created (typically under `/tmp`). |
+| `--runtime-env-dir` | ❌ | *(flag)* | Return the full absolute path of the active runtime environment directory (Conda/venv), not the Python executable path. |
 | `--json` | ❌ | *(flag)* | Machine-readable JSON output (for AI callers) |
 
 ---
@@ -121,57 +112,63 @@ Running with no arguments prints full usage help.
 ### Examples
 
 ```bash
+# Print only the active runtime environment directory (full absolute path)
+./run-page2context.sh --runtime-env-dir
+
+# Runtime environment directory in JSON mode
+./run-page2context.sh --runtime-env-dir --json
+
 # Basic capture (chrome local profile by default) -> prints absolute created artifact paths
 # (writes into a new unique temp folder by default)
-python3 page2context.py --url "http://localhost:4200/"
+./run-page2context.sh --url "http://localhost:4200/"
 
 # Write outputs into a stable folder you control
-python3 page2context.py --url "http://localhost:4200/" --output page2context
+./run-page2context.sh --url "http://localhost:4200/" --output page2context
 
 # Clean only historical temporary artifacts (no --url needed)
-python3 page2context.py --clean-temp
+./run-page2context.sh --clean-temp
 
 # Clean one or more local browser profile directories (no --url needed)
-python3 page2context.py --clean-chrome --clean-firefox
+./run-page2context.sh --clean chrome --clean firefox
 
 # Clean first, then capture normally
-python3 page2context.py --clean-temp --url "http://localhost:4200/"
+./run-page2context.sh --clean-temp --url "http://localhost:4200/"
 
 # Use Firefox local profile
-python3 page2context.py --url "http://localhost:4200/" --use-firefox
+./run-page2context.sh --url "http://localhost:4200/" --capture firefox
 
 # Show Chrome browser window only (interactive session mode, no URL required)
-python3 page2context.py --show-chrome
+./run-page2context.sh --open chrome
 
 # Show Chrome browser window and open an initial URL (still interactive session mode)
-python3 page2context.py --url "http://localhost:4200/" --show-chrome
+./run-page2context.sh --url "http://localhost:4200/" --open chrome
 
 # Use and show Firefox explicitly (headed mode)
-python3 page2context.py --url "http://localhost:4200/" --use-firefox --show-firefox
+./run-page2context.sh --url "http://localhost:4200/" --capture firefox --open firefox
 
 # Custom viewport
-python3 page2context.py --url "http://localhost:4200/" --size 1920x1080
+./run-page2context.sh --url "http://localhost:4200/" --size 1920x1080
 
 # Capture only specific tiles of a long page
-python3 page2context.py --url "http://localhost:4200/" --crop "3x9:1,27"
+./run-page2context.sh --url "http://localhost:4200/" --crop "3x9:1,27"
 
 # Capture browser console/page errors
-python3 page2context.py --url "http://localhost:4200/" --console-log
+./run-page2context.sh --url "http://localhost:4200/" --console-log
 
 # Execute custom JavaScript inside the page and wait until it finishes
-python3 page2context.py --url "http://localhost:4200/" --run-js-file "./script.js"
+./run-page2context.sh --url "http://localhost:4200/" --run-js-file "./script.js"
 
 # Wait 1200ms after load (before JS/screenshot) to let UI animations settle
-python3 page2context.py --url "http://localhost:4200/" --post-load-wait-ms 1200 --run-js-file "./script.js"
+./run-page2context.sh --url "http://localhost:4200/" --post-load-wait-ms 1200 --run-js-file "./script.js"
 
 # Example script: log browser cookies from JS
-python3 page2context.py --url "http://localhost:4200/" --console-log --run-js-file "./test/example_log_cookies.js"
+./run-page2context.sh --url "http://localhost:4200/" --console-log --run-js-file "./test/example_log_cookies.js"
 
 # Download only CSS/JS assets seen in source/network
-python3 page2context.py --url "http://localhost:4200/" --resources-regex "\\.(css|js)(\\?|$)"
+./run-page2context.sh --url "http://localhost:4200/" --resources-regex "\\.(css|js)(\\?|$)"
 
 # Download only copilot* CSS from GitHub (external URL regex policy)
-python3 page2context.py --url "https://github.com" --allow-external-urls "^https://([^/]+\\.)?(github\\.com|githubassets\\.com)/" --post-load-wait-ms 5000 --crop "4x10:3" --resources-regex "(?i)/copilot[^/]*\\.css(\\?|$)" --output "./tmp/github_copilot_css" --json
+./run-page2context.sh --url "https://github.com" --allow-external-urls "^https://([^/]+\\.)?(github\\.com|githubassets\\.com)/" --post-load-wait-ms 5000 --crop "4x10:3" --resources-regex "(?i)/copilot[^/]*\\.css(\\?|$)" --output "./tmp/github_copilot_css" --json
 
 # Compare downloaded copilot* CSS with your local file
 diff -u ./tmp/github_copilot_css/p2cxt_resource_001.css ./path/to/local/copilot.css
@@ -329,7 +326,7 @@ See [p2cxt_console.log](p2cxt_console.log) for captured console output and brows
 - Result: `...`
 ```
 
-### With `--use-<browser>` / `--show-<browser>`
+### With `--capture <browser>` / `--open <browser>`
 
 #### Why use a browser profile?
 
@@ -342,15 +339,15 @@ between runs and capture authenticated pages reliably.
 - Each browser uses its own folder only when selected (`./browser/chrome`,
   `./browser/firefox`, etc.).
 - If the folder does not exist, it is created automatically.
-- Chrome is the default browser if no `--use-*`/`--show-*` is provided.
-- `--show-<browser>` launches an interactive browser session (headed mode).
+- Chrome is the default browser if no `--capture <browser>`/`--open <browser>` is provided.
+- `--open <browser>` launches an interactive browser session (headed mode).
   No capture confirmation is required: close the window whenever you are done.
 - This is useful because project profiles (`./browser/<browser>`) are different
   from your normal personal browser profile.
 - If you ever see Chrome's "Restore pages? Chrome didn't shut down correctly" dialog,
-  close it and retry; if it persists, run `--clean-chrome` once to reset the project-local profile.
+  close it and retry; if it persists, run `--clean chrome` once to reset the project-local profile.
 
-Use `--clean-<browser>` to remove these local profile folders when desired.
+Use `--clean <browser>` to remove these local profile folders when desired.
 
 `p2cxt_context.md` adds:
 
@@ -511,15 +508,15 @@ point this flag at untrusted or user-supplied JS.
 ### Browser profile flags — local project profile directories
 
 Browser state is stored in `./browser/<browser>` directories under the project root.
-These folders are reused between runs and can be removed explicitly with `--clean-<browser>`.
-Use `--show-<browser>` when you need manual interaction in a visible browser window.
-In interactive mode, `--show-<browser>` runs until you close the browser window.
+These folders are reused between runs and can be removed explicitly with `--clean <browser>`.
+Use `--open <browser>` when you need manual interaction in a visible browser window.
+In interactive mode, `--open <browser>` runs until you close the browser window.
 
 ---
 
 ## Using with GitHub Copilot / Cursor
 
-1. Run `page2context.py` against your target page
+1. Run `./run-page2context.sh` (or `run-page2context.cmd` on Windows) against your target page
 2. Open `page2context/p2cxt_context.md` in your IDE
 3. Reference it in Copilot Chat:
    - Drag the file into chat, or type `#file:page2context/p2cxt_context.md`
@@ -533,14 +530,14 @@ In interactive mode, `--show-<browser>` runs until you close the browser window.
 This is usually an IDE safety policy issue, not a `page2context` failure. Common causes:
 
 - The IDE requires manual approval for command execution and the command was denied.
-- The invoked folder does not have the expected runtime/dependencies. Run `make setup`.
+- The invoked folder does not have the expected runtime/dependencies. Run `./install-page2context.sh`.
 - Copilot tried to run from a different folder than your trusted workspace (for example `~/.agents/skills/page-2-context` instead of your project folder).
 
 Recommended fix:
 
 ```bash
 cd "~/Documents/docs/+Personal/MySources/generate_markdown_from_website"
-python3 page2context.py --show-chrome --json
+./run-page2context.sh --open chrome --json
 ```
 
 Then close the interactive window and run your capture command from the same project folder so the same local profile (`./browser/chrome`) is reused.
@@ -553,17 +550,17 @@ Then close the interactive window and run your capture command from the same pro
 
 2) Capture using your current project Chrome profile (when login is required)
 
-> Use `page2context` with `--show-chrome` to open a visible browser, log in if needed, then capture http://localhost:4200 with 1024x768 viewport and 5 seconds wait after load.
+> Use `page2context` with `--open chrome` to open a visible browser, log in if needed, then capture http://localhost:4200 with 1024x768 viewport and 5 seconds wait after load.
 
 ### Browser login caveat (Google/Gmail)
 
 Some identity providers (especially Google) can still reject automation-controlled sessions with messages like:
 `This browser or app may not be secure`.
 
-`page2context` now prefers real installed browser channels (for example Chrome via `channel=chrome`) in `--use-chrome` runs and reduces default automation flags, but providers can still enforce stricter checks.
+`page2context` now prefers real installed browser channels (for example Chrome via `channel=chrome`) in `--capture chrome` runs and reduces default automation flags, but providers can still enforce stricter checks.
 
 If this happens:
 
-1. Use `--show-chrome` and complete login manually in the visible window.
+1. Use `--open chrome` and complete login manually in the visible window.
 2. Keep using the same project profile folder (`./browser/chrome`) for later captures.
 3. Ensure your system Chrome is installed and up to date.

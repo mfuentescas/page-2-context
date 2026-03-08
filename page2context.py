@@ -172,6 +172,7 @@ def _emit(payload: dict) -> None:
     clean_only_messages = {
         "Historical temporary artifacts cleaned.",
         "Browser profile directories cleaned.",
+        "Runtime environment directory resolved.",
     }
     is_clean_only = payload.get("status") == "success" and payload.get("message") in clean_only_messages
 
@@ -263,6 +264,14 @@ def _emit_text(payload: dict) -> None:
                     print(str(entry))
             return
 
+        if msg == "Runtime environment directory resolved.":
+            runtime_env_dir = payload.get("runtime_env_dir", "")
+            print(f"runtime_env_dir: {runtime_env_dir}")
+            history_file = payload.get("history_file")
+            if history_file:
+                print(f"history_file: {history_file}")
+            return
+
         outputs = payload.get("output")
         if isinstance(outputs, list) and outputs:
             print("\n".join(str(p) for p in outputs))
@@ -351,17 +360,11 @@ SYNTAX_HELP = textwrap.dedent("""\
     Usage:
       python3 page2context.py [--url "<URL>"] [OPTIONS]
     Required:
-      --url  "<URL>"                URL to capture (required for capture mode; optional with --show-*)
+      --url  "<URL>"                URL to capture (required for capture mode; optional with --open)
     Optional:
       --help                       Show this help and exit.
       --clean-temp                 Clean historical p2cxt temporary artifacts.
-      --clean-chrome               Remove local browser profile dir: ./browser/chrome
-      --clean-edge                 Remove local browser profile dir: ./browser/edge
-      --clean-brave                Remove local browser profile dir: ./browser/brave
-      --clean-firefox              Remove local browser profile dir: ./browser/firefox
-      --clean-safari               Remove local browser profile dir: ./browser/safari
-      --clean-chromium             Remove local browser profile dir: ./browser/chromium
-      --clean-webkit               Remove local browser profile dir: ./browser/webkit
+      --clean <browser>            Remove local browser profile dir: ./browser/<browser>
       --allow-external-urls [REGEX]
                                    Allow external (non-localhost/non-private IP) URLs for --url and resource downloads.
                                    - If omitted: external URLs are blocked (default is local-only).
@@ -370,33 +373,45 @@ SYNTAX_HELP = textwrap.dedent("""\
       --size  <WIDTHxHEIGHT>       Viewport size (default: 1280x720)
       --crop  <COLSxROWS:TILES>    Grid crop, e.g. "3x9:1,27"
       --console-log                Save browser console/navigation errors to p2cxt_console.log.
-      --use-chrome                 Use local profile ./browser/chrome (default if no --use-* is given).
-      --use-edge                   Use local profile ./browser/edge.
-      --use-brave                  Use local profile ./browser/brave.
-      --use-firefox                Use local profile ./browser/firefox.
-      --use-safari                 Use local profile ./browser/safari (webkit engine).
-      --use-chromium               Use local profile ./browser/chromium.
-      --use-webkit                 Use local profile ./browser/webkit.
-      --show-chrome                Show Chrome window (interactive session mode) using chrome profile; closes when you close the window.
-      --show-edge                  Show Edge window (interactive session mode) using edge profile; closes when you close the window.
-      --show-brave                 Show Brave window (interactive session mode) using brave profile; closes when you close the window.
-      --show-firefox               Show Firefox window (interactive session mode) using firefox profile; closes when you close the window.
-      --show-safari                Show Safari window (interactive session mode) using safari profile; closes when you close the window.
-      --show-chromium              Show Chromium window (interactive session mode) using chromium profile; closes when you close the window.
-      --show-webkit                Show WebKit window (interactive session mode) using webkit profile; closes when you close the window.
-                                   Only one --use-* and one --show-* browser can be selected per run.
+      --capture <browser>          Capture using local profile ./browser/<browser> (default: chrome).
+      --open <browser>             Open visible interactive session using ./browser/<browser>.
+                                   If both --capture and --open are provided, they must match.
       --run-js-file <PATH>         Execute JavaScript file in the opened page.
       --post-load-wait-ms <MS>     Extra wait after page load before JS/screenshot (default: 0).
       --resources-regex <REGEX>    Download resources whose URL matches REGEX.
       --output <DIR>               Output folder (default: a new temp dir under /tmp)
+      --runtime-env-dir            Print the full path of the active runtime environment directory (Conda/venv).
       --json                       Machine-readable JSON output (for AI callers)
+    Browser values:
+      chrome, edge, brave, firefox, safari, chromium, webkit
     Examples:
       python3 page2context.py --help
       python3 page2context.py --url "http://localhost:4200" --json
-      python3 page2context.py --url "http://localhost:4200" --use-firefox --json
-      python3 page2context.py --url "http://localhost:4200" --show-chrome --json
-      python3 page2context.py --clean-temp --clean-chrome --clean-firefox --json
+      python3 page2context.py --url "http://localhost:4200" --capture firefox --json
+      python3 page2context.py --url "http://localhost:4200" --open chrome --json
+      python3 page2context.py --clean-temp --clean chrome --clean firefox --json
+      python3 page2context.py --runtime-env-dir --json
 """).format(version=__version__)
+
+
+def _resolve_runtime_env_dir() -> str:
+    """Return the active runtime environment directory as an absolute path."""
+    conda_prefix = os.environ.get("CONDA_PREFIX", "").strip()
+    if conda_prefix:
+        return str(pathlib.Path(conda_prefix).expanduser().resolve())
+
+    virtual_env = os.environ.get("VIRTUAL_ENV", "").strip()
+    if virtual_env:
+        return str(pathlib.Path(virtual_env).expanduser().resolve())
+
+    executable = pathlib.Path(sys.executable).resolve()
+    parent_name = executable.parent.name.lower()
+    if parent_name in {"bin", "scripts"}:
+        return str(executable.parent.parent.resolve())
+
+    return str(pathlib.Path(sys.prefix).expanduser().resolve())
+
+
 class _TextArgumentParser(argparse.ArgumentParser):
     def error(self, message: str) -> None:
         _error_exit(EXIT_BAD_ARGS, f"Argument error: {message}",
@@ -427,6 +442,14 @@ def parse_args():
     parser.add_argument("--url",         required=False,       help="URL to capture")
     parser.add_argument("--clean-temp",  action="store_true",  help="Clean historical p2cxt artifacts.")
     parser.add_argument(
+        "--clean",
+        action="append",
+        choices=BROWSER_KEYS,
+        default=[],
+        metavar="<browser>",
+        help="Delete local browser profile dir: ./browser/<browser>. Repeatable.",
+    )
+    parser.add_argument(
         "--allow-external-urls",
         nargs="?",
         const="",
@@ -440,13 +463,23 @@ def parse_args():
     parser.add_argument("--size",        default="1280x720",   help="Viewport WIDTHxHEIGHT")
     parser.add_argument("--crop",        default=None,         help="Grid crop COLSxROWS:TILE[,TILE]")
     parser.add_argument("--console-log", action="store_true",  help="Save browser console/errors to p2cxt_console.log.")
-    for browser in BROWSER_KEYS:
-        parser.add_argument(f"--use-{browser}", action="store_true", dest=f"use_{browser}",
-                            help=f"Use local profile ./browser/{browser}")
-        parser.add_argument(f"--show-{browser}", action="store_true", dest=f"show_{browser}",
-                            help=f"Show {browser} window (headed mode).")
-        parser.add_argument(f"--clean-{browser}", action="store_true", dest=f"clean_{browser}",
-                            help=f"Delete local profile ./browser/{browser}")
+    parser.add_argument(
+        "--capture",
+        choices=BROWSER_KEYS,
+        default=None,
+        metavar="<browser>",
+        help="Capture using local profile ./browser/<browser>.",
+    )
+    parser.add_argument(
+        "--open",
+        choices=BROWSER_KEYS,
+        default=None,
+        metavar="<browser>",
+        help="Open visible browser session (headed mode) for the selected browser.",
+    )
+    # Backward-compatible aliases (deprecated): keep hidden in help.
+    parser.add_argument("--use", choices=BROWSER_KEYS, default=None, dest="legacy_use", help=argparse.SUPPRESS)
+    parser.add_argument("--show", choices=BROWSER_KEYS, default=None, dest="legacy_show", help=argparse.SUPPRESS)
     parser.add_argument("--run-js-file",       default=None,           help="JS file to execute in the opened page.")
     parser.add_argument("--post-load-wait-ms", default="0",            help="Wait (ms) after page load.")
     parser.add_argument("--resources-regex",   default=None,           help="Download resources whose URL matches this regex.")
@@ -455,27 +488,38 @@ def parse_args():
         default=None,
         help="Output folder. If omitted, a new unique temp dir is created.",
     )
+    parser.add_argument(
+        "--runtime-env-dir",
+        action="store_true",
+        help="Return the full path of the active runtime environment directory.",
+    )
     parser.add_argument("--json",              action="store_true",    help="Emit JSON output.")
     args = parser.parse_args()
 
-    selected_use = [b for b in BROWSER_KEYS if getattr(args, f"use_{b}")]
-    selected_show = [b for b in BROWSER_KEYS if getattr(args, f"show_{b}")]
-    selected_clean = [b for b in BROWSER_KEYS if getattr(args, f"clean_{b}")]
+    selected_use = args.capture if args.capture else args.legacy_use
+    selected_show = args.open if args.open else args.legacy_show
+    selected_clean = list(dict.fromkeys(args.clean))
 
-    if len(selected_use) > 1:
-        flags = ", ".join(f"--use-{b}" for b in selected_use)
-        _error_exit(EXIT_BAD_ARGS, "Argument error: only one --use-* browser can be selected per run.", hint=f"Received: {flags}")
-
-    if len(selected_show) > 1:
-        flags = ", ".join(f"--show-{b}" for b in selected_show)
-        _error_exit(EXIT_BAD_ARGS, "Argument error: only one --show-* browser can be selected per run.", hint=f"Received: {flags}")
-
-    selected_browser = selected_use[0] if selected_use else (selected_show[0] if selected_show else "chrome")
-    if selected_show and selected_use and selected_show[0] != selected_use[0]:
+    if args.capture and args.legacy_use and args.capture != args.legacy_use:
         _error_exit(
             EXIT_BAD_ARGS,
-            "Argument error: --show-* browser must match --use-* browser when both are provided.",
-            hint=f"Received --use-{selected_use[0]} with --show-{selected_show[0]}",
+            "Argument error: conflicting browser values for --capture and --use.",
+            hint=f"Received --capture {args.capture} and --use {args.legacy_use}",
+        )
+
+    if args.open and args.legacy_show and args.open != args.legacy_show:
+        _error_exit(
+            EXIT_BAD_ARGS,
+            "Argument error: conflicting browser values for --open and --show.",
+            hint=f"Received --open {args.open} and --show {args.legacy_show}",
+        )
+
+    selected_browser = selected_use if selected_use else (selected_show if selected_show else "chrome")
+    if selected_show and selected_use and selected_show != selected_use:
+        _error_exit(
+            EXIT_BAD_ARGS,
+            "Argument error: --open browser must match --capture browser when both are provided.",
+            hint=f"Received --capture {selected_use} with --open {selected_show}",
         )
 
     args.selected_browser = selected_browser
@@ -483,12 +527,12 @@ def parse_args():
     args.clean_browsers = selected_clean
 
     if args.headed:
-        # In --show-* session mode we do not require --url.
+        # In --open <browser> session mode we do not require --url.
         args.url = args.url or None
 
-    if not args.clean_temp and not args.clean_browsers and not args.url and not args.headed:
-        _error_exit(EXIT_BAD_ARGS, "Argument error: --url is required unless using clean-only flags or --show-* session mode.",
-                    hint="Use --show-<browser> to open an interactive browser session, or provide --url for capture.")
+    if not args.clean_temp and not args.clean_browsers and not args.url and not args.headed and not args.runtime_env_dir:
+        _error_exit(EXIT_BAD_ARGS, "Argument error: --url is required unless using clean-only flags, --runtime-env-dir, or --open <browser> session mode.",
+                    hint="Use --open <browser> to start an interactive browser session, --runtime-env-dir for environment inspection, or provide --url for capture.")
 
     _json_mode = args.json
     if args.url:
@@ -1108,18 +1152,11 @@ def _browser_install_hint(exc: "PlaywrightError", browser_key: str) -> Optional[
     raw = str(exc)
     if "Executable doesn't exist" in raw or "executable doesn't exist" in raw:
         pw_engine = PROFILE_KEY_TO_BROWSER_TYPE.get(browser_key, browser_key)
-        make_target_map = {
-            "chrome": "setup-chromium", "chromium": "setup-chromium",
-            "edge": "setup-edge", "brave": "setup-brave",
-            "firefox": "setup-firefox",
-            "safari": "setup-webkit", "webkit": "setup-webkit",
-        }
-        make_target = make_target_map.get(browser_key, f"setup-{pw_engine}")
         py = sys.executable
         return (
             f"Browser '{browser_key}' is not installed for Playwright. "
             f"Run:  {py} -m playwright install {pw_engine}  "
-            f"(or:  make {make_target})"
+            "(or run: ./install-page2context.sh)"
         )
     return None
 
@@ -1240,7 +1277,7 @@ def _run_headed_session_only(
     viewport_w: int,
     viewport_h: int,
 ) -> None:
-    """Run --show-* as an interactive browser session that ends on window close."""
+    """Run --open <browser> as an interactive browser session that ends on window close."""
     with sync_playwright() as p:
         browser_type = getattr(p, selected_browser_type)
         launch_kwargs = {
@@ -1281,6 +1318,7 @@ def main() -> None:
     clean_result = None
     temp_clean_result = None
     browser_clean_result = None
+    runtime_env_dir = _resolve_runtime_env_dir()
 
     if args.clean_temp:
         lock_path: Optional[pathlib.Path] = None
@@ -1297,6 +1335,7 @@ def main() -> None:
     if not args.url and not args.headed:
         payload: dict = {
             "version": __version__,
+            "runtime_env_dir": runtime_env_dir,
             "output": [],
             "files": [],
         }
@@ -1310,6 +1349,8 @@ def main() -> None:
             _success("Historical temporary artifacts cleaned.", **payload)
         elif browser_clean_result is not None:
             _success("Browser profile directories cleaned.", **payload)
+        elif args.runtime_env_dir:
+            _success("Runtime environment directory resolved.", **payload)
         return
 
     try:
@@ -1351,6 +1392,7 @@ def main() -> None:
                     "Headed browser session finished.",
                     version=__version__,
                     url=args.url,
+                    runtime_env_dir=runtime_env_dir,
                     browser_profile_source=str(profile_source_dir),
                     chrome_profile_source=str(profile_source_dir) if selected_profile_key == "chrome" else "",
                     browser_profile={
@@ -1371,6 +1413,7 @@ def main() -> None:
         result: dict = {
             "version": __version__,
             "url": args.url,
+            "runtime_env_dir": runtime_env_dir,
             "browser_profile_source": str(profile_source_dir),
             "chrome_profile_source": str(profile_source_dir) if selected_profile_key == "chrome" else "",
             "browser_profile": {
@@ -1504,7 +1547,7 @@ def main() -> None:
                 reason=raw.splitlines()[0],
                 hint=(
                     "The browser context was closed before capture finished. "
-                    "Retry the command; if this repeats, clean the local profile (for example --clean-chrome) and retry."
+                    "Retry the command; if this repeats, clean the local profile (for example --clean chrome) and retry."
                 ),
                 url=args.url,
             )
@@ -1609,6 +1652,7 @@ def main() -> None:
         "browser_profile_source": str(profile_source_dir) if profile_source_dir is not None else "",
         # Backward compatibility: keep chrome_profile_source behavior (only populated in chrome mode)
         "chrome_profile_source": chrome_profile_source_value,
+        "runtime_env_dir":      runtime_env_dir,
     }
     if clean_result is not None:
         result["cleanup_before_run"] = clean_result

@@ -9,5 +9,4 @@ __pycache__/
 
 # AI skill copies (.github/copilot-instructions.md, CLAUDE.md, etc.)
 # are TRACKED intentionally so the repo works out of the box for every AI.
-# They are generated from agent-skill.md — run: make sync-agent-skills
-
+# They are generated from agent-skill.md — run: ./scripts/sync-agent-skills.sh

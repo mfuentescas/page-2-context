@@ -42,21 +42,21 @@ Always pass `--json` so output is machine-readable.
 
 ### Minimal call
 ```bash
-python3 page2context.py --url "<URL>" --json
+./run-page2context.sh --url "<URL>" --json
 ```
 
 ### Full call
 ```bash
-python3 page2context.py \
+./run-page2context.sh \
   --clean-temp \
-  --clean-<browser> \
+  --clean <browser> \
   --url "<URL>" \
   --allow-external-urls "<REGEX>" \
   --size "<WIDTHxHEIGHT>" \
   --crop "<COLSxROWS:TILE[,TILE]>" \
   --console-log \
-  --use-<browser> \
-  --show-<browser> \
+  --capture <browser> \
+  --open <browser> \
   --run-js-file "<PATH>" \
   --post-load-wait-ms "<MS>" \
   --resources-regex "<REGEX>" \
@@ -68,19 +68,19 @@ python3 page2context.py \
 
 ### Browser selection
 
-Use one `--use-<browser>` flag (optional). If omitted, Chrome is used by default.
+Use one `--capture <browser>` flag (optional). If omitted, Chrome is used by default.
 
 ```bash
-python3 page2context.py --url "<URL>" --use-<browser> --json
-python3 page2context.py --url "<URL>" --use-firefox --json
+./run-page2context.sh --url "<URL>" --capture <browser> --json
+./run-page2context.sh --url "<URL>" --capture firefox --json
 ```
 
-Use one `--show-<browser>` flag to run headed (visible) mode. If both `--use-*` and `--show-*` are set, they must target the same browser.
-In interactive terminals, `--show-*` runs until the browser window is closed.
+Use one `--open <browser>` flag to run headed (visible) mode. If both `--capture <browser>` and `--open <browser>` are set, they must target the same browser.
+In interactive terminals, `--open <browser>` runs until the browser window is closed.
 
 ```bash
-python3 page2context.py --show-<browser> --json
-python3 page2context.py --url "<URL>" --use-firefox --show-firefox --json
+./run-page2context.sh --open <browser> --json
+./run-page2context.sh --url "<URL>" --capture firefox --open firefox --json
 ```
 
 ### Resource retrieval rule (important)
@@ -95,7 +95,7 @@ If the user asks to retrieve/download/find CSS/JS/assets from the page, you must
 Example for `copilot*` CSS URLs (external-host regex policy):
 
 ```bash
-python3 page2context.py \
+./run-page2context.sh \
   --url "https://github.com" \
   --allow-external-urls "^https://([^/]+\\.)?(github\\.com|githubassets\\.com)/" \
   --post-load-wait-ms 5000 \
@@ -107,26 +107,26 @@ python3 page2context.py \
 
 ### Cleanup helpers
 
-`--clean-temp` only removes historical `p2cxt_*` artifacts. Browser profile folders are cleaned separately with `--clean-<browser>`.
+`--clean-temp` only removes historical `p2cxt_*` artifacts. Browser profile folders are cleaned separately with `--clean <browser>`.
 
 ```bash
-python3 page2context.py --clean-<browser> --json
-python3 page2context.py --clean-chrome --clean-firefox --json
+./run-page2context.sh --clean <browser> --json
+./run-page2context.sh --clean chrome --clean firefox --json
 ```
 
 ### Parameters
 
 | Parameter | Required | Default | Description |
 |-----------|----------|---------|-------------|
-| `--url` | ✅ (unless clean-only or `--show-*` session mode) | - | URL to capture (always quote it) |
+| `--url` | ✅ (unless clean-only or `--open <browser>` session mode) | - | URL to capture (always quote it) |
 | `--allow-external-urls` | ❌ | *(none)* | Allow external URLs for `--url` and resource downloads. Omitted = blocked by default. Empty value allows all. Regex value allows matches only. |
 | `--size` | ❌ | `1280x720` | Viewport size, e.g. `1920x1080` or `375x812` |
 | `--crop` | ❌ | *(none)* | Grid crop spec |
 | `--clean-temp` | ❌ | *(flag)* | Clean historical `p2cxt_*` artifacts from tracked cache |
-| `--clean-<browser>` | ❌ | *(flag)* | Remove local browser profile folder `./browser/<browser>` |
+| `--clean <browser>` | ❌ | *(flag)* | Remove local browser profile folder `./browser/<browser>` |
 | `--console-log` | ❌ | *(flag)* | Save console/page/navigation errors into `p2cxt_console.log` |
-| `--use-<browser>` | ❌ | `chrome` | Select browser/profile folder `./browser/<browser>` |
-| `--show-<browser>` | ❌ | *(headless)* | Open interactive browser session; close the window to finish |
+| `--capture <browser>` | ❌ | `chrome` | Select browser/profile folder `./browser/<browser>` |
+| `--open <browser>` | ❌ | *(headless)* | Open interactive browser session; close the window to finish |
 | `--run-js-file` | ❌ | *(none)* | Execute JS file in browser page and wait until it finishes |
 | `--post-load-wait-ms` | ❌ | `0` | Extra wait in milliseconds after page load and before JS/screenshot |
 | `--resources-regex` | ❌ | *(none)* | Download resources whose URL matches regex from HTML refs + observed traffic |
@@ -197,7 +197,7 @@ Each selected tile is saved as a **separate PNG** (`p2cxt_tile_N.png`).
 }
 ```
 
-### Browser-profile clean-only (`--clean-<browser>` without `--url`)
+### Browser-profile clean-only (`--clean <browser>` without `--url`)
 
 ```json
 {
@@ -258,22 +258,17 @@ Note: `./browser/<browser>` is a project-local profile and is different from the
 ```bash
 git clone https://github.com/mfuentescas/page-2-context.git
 cd page2context
-pip install -r requirements.txt
-playwright install chromium
+./install-page2context.sh
 ```
 
-Or with make:
+Windows users:
 
-```bash
-make setup
-make setup-browsers
-make setup-firefox
-make setup-edge
-make setup-webkit
+```bat
+run-page2context.cmd --help
 ```
 
 Use `test/example_log_cookies.js` as a ready-to-run sample for `--run-js-file`:
 
 ```bash
-python3 page2context.py --url "<URL>" --console-log --run-js-file "./test/example_log_cookies.js" --json
+./run-page2context.sh --url "<URL>" --console-log --run-js-file "./test/example_log_cookies.js" --json
 ```

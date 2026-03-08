@@ -41,7 +41,7 @@ Prompt used:
 
 > Use page2context to load github.com, wait 5 seconds, then capture tile #5 of a 4×10 grid of the page and retrieve the copilot* CSS file. Show me the capture and compare that CSS file with the one existing in the project and show me the differences.
 
-> Important for this example: the browser profile was already logged in to GitHub beforehand. To prepare that state, run an interactive session first with `--show-chrome`, complete login, close the window, and then run the capture command.
+> Important for this example: the browser profile was already logged in to GitHub beforehand. To prepare that state, run an interactive session first with `--open chrome`, complete login, close the window, and then run the capture command.
 
 Example screenshot from that flow:
 
@@ -90,16 +90,16 @@ Running with no arguments prints full usage help.
 
 | Parameter | Required | Default | Description |
 |-----------|----------|---------|-------------|
-| `--url "<URL>"` | ⚠️ | — | URL to capture. **Required for capture mode**, optional when using `--show-*` interactive mode. |
+| `--url "<URL>"` | ⚠️ | — | URL to capture. **Required for capture mode**, optional when using `--open <browser>` interactive mode. |
 | `--allow-external-urls [regex]` | ❌ | *(none)* | **Disabled by default**: only localhost/127.0.0.1/::1 and private/local IP literals are allowed. Use this flag to opt into external URLs for `--url` and for `--resources-regex` downloads. Pass empty (`""`) to allow all external URLs, or a regex to restrict allowed URLs. |
 | `--clean-temp` | ❌ | *(flag)* | Clean historical `p2cxt_*` artifacts tracked in cache |
 | `--size <WxH>` | ❌ | `1280x720` | Viewport size, e.g. `1920x1080` |
 | `--crop <spec>` | ❌ | *(none)* | Grid crop — see below |
 | `--console-log` | ❌ | *(flag)* | Capture browser console/page/navigation errors into `p2cxt_console.log` |
-| `--use-<browser>` | ❌ | `chrome` | Select local browser profile `./browser/<browser>`. Allowed values for `<browser>`: `chrome`, `edge`, `brave`, `firefox`, `safari`, `chromium`, `webkit`. |
-| `--show-<browser>` | ❌ | *(off)* | Open interactive browser session for `<browser>` using the same profile folder pattern; close the window when done. |
-| `--clean-<browser>` | ❌ | *(flag)* | Remove local browser profile directory `./browser/<browser>` for the selected browser value. |
-| | | | ⚠️ Use only one `--use-*` and one `--show-*` per run. If both are set, they must target the same browser. |
+| `--capture <browser>` | ❌ | `chrome` | Select local browser profile `./browser/<browser>`. Allowed values for `<browser>`: `chrome`, `edge`, `brave`, `firefox`, `safari`, `chromium`, `webkit`. |
+| `--open <browser>` | ❌ | *(off)* | Open interactive browser session for `<browser>` using the same profile folder pattern; close the window when done. |
+| `--clean <browser>` | ❌ | *(flag)* | Remove local browser profile directory `./browser/<browser>` for the selected browser value. |
+| | | | ⚠️ Use only one `--capture <browser>` and one `--open <browser>` per run. If both are set, they must target the same browser. |
 | `--run-js-file <path>` | ❌ | *(none)* | Execute a JS file inside the opened page and wait for completion |
 | `--post-load-wait-ms <ms>` | ❌ | `0` | Extra wait after page load and before `--run-js-file`/screenshot (useful for animations) |
 | `--resources-regex <regex>` | ❌ | *(none)* | Download matching resources seen in HTML or browser traffic. **Use this whenever you ask to retrieve CSS/JS/assets (for example `copilot*` CSS).** |
@@ -129,22 +129,22 @@ Running with no arguments prints full usage help.
 ./run-page2context.sh --clean-temp
 
 # Clean one or more local browser profile directories (no --url needed)
-./run-page2context.sh --clean-chrome --clean-firefox
+./run-page2context.sh --clean chrome --clean firefox
 
 # Clean first, then capture normally
 ./run-page2context.sh --clean-temp --url "http://localhost:4200/"
 
 # Use Firefox local profile
-./run-page2context.sh --url "http://localhost:4200/" --use-firefox
+./run-page2context.sh --url "http://localhost:4200/" --capture firefox
 
 # Show Chrome browser window only (interactive session mode, no URL required)
-./run-page2context.sh --show-chrome
+./run-page2context.sh --open chrome
 
 # Show Chrome browser window and open an initial URL (still interactive session mode)
-./run-page2context.sh --url "http://localhost:4200/" --show-chrome
+./run-page2context.sh --url "http://localhost:4200/" --open chrome
 
 # Use and show Firefox explicitly (headed mode)
-./run-page2context.sh --url "http://localhost:4200/" --use-firefox --show-firefox
+./run-page2context.sh --url "http://localhost:4200/" --capture firefox --open firefox
 
 # Custom viewport
 ./run-page2context.sh --url "http://localhost:4200/" --size 1920x1080
@@ -326,7 +326,7 @@ See [p2cxt_console.log](p2cxt_console.log) for captured console output and brows
 - Result: `...`
 ```
 
-### With `--use-<browser>` / `--show-<browser>`
+### With `--capture <browser>` / `--open <browser>`
 
 #### Why use a browser profile?
 
@@ -339,15 +339,15 @@ between runs and capture authenticated pages reliably.
 - Each browser uses its own folder only when selected (`./browser/chrome`,
   `./browser/firefox`, etc.).
 - If the folder does not exist, it is created automatically.
-- Chrome is the default browser if no `--use-*`/`--show-*` is provided.
-- `--show-<browser>` launches an interactive browser session (headed mode).
+- Chrome is the default browser if no `--capture <browser>`/`--open <browser>` is provided.
+- `--open <browser>` launches an interactive browser session (headed mode).
   No capture confirmation is required: close the window whenever you are done.
 - This is useful because project profiles (`./browser/<browser>`) are different
   from your normal personal browser profile.
 - If you ever see Chrome's "Restore pages? Chrome didn't shut down correctly" dialog,
-  close it and retry; if it persists, run `--clean-chrome` once to reset the project-local profile.
+  close it and retry; if it persists, run `--clean chrome` once to reset the project-local profile.
 
-Use `--clean-<browser>` to remove these local profile folders when desired.
+Use `--clean <browser>` to remove these local profile folders when desired.
 
 `p2cxt_context.md` adds:
 
@@ -508,9 +508,9 @@ point this flag at untrusted or user-supplied JS.
 ### Browser profile flags — local project profile directories
 
 Browser state is stored in `./browser/<browser>` directories under the project root.
-These folders are reused between runs and can be removed explicitly with `--clean-<browser>`.
-Use `--show-<browser>` when you need manual interaction in a visible browser window.
-In interactive mode, `--show-<browser>` runs until you close the browser window.
+These folders are reused between runs and can be removed explicitly with `--clean <browser>`.
+Use `--open <browser>` when you need manual interaction in a visible browser window.
+In interactive mode, `--open <browser>` runs until you close the browser window.
 
 ---
 
@@ -537,7 +537,7 @@ Recommended fix:
 
 ```bash
 cd "~/Documents/docs/+Personal/MySources/generate_markdown_from_website"
-./run-page2context.sh --show-chrome --json
+./run-page2context.sh --open chrome --json
 ```
 
 Then close the interactive window and run your capture command from the same project folder so the same local profile (`./browser/chrome`) is reused.
@@ -550,17 +550,17 @@ Then close the interactive window and run your capture command from the same pro
 
 2) Capture using your current project Chrome profile (when login is required)
 
-> Use `page2context` with `--show-chrome` to open a visible browser, log in if needed, then capture http://localhost:4200 with 1024x768 viewport and 5 seconds wait after load.
+> Use `page2context` with `--open chrome` to open a visible browser, log in if needed, then capture http://localhost:4200 with 1024x768 viewport and 5 seconds wait after load.
 
 ### Browser login caveat (Google/Gmail)
 
 Some identity providers (especially Google) can still reject automation-controlled sessions with messages like:
 `This browser or app may not be secure`.
 
-`page2context` now prefers real installed browser channels (for example Chrome via `channel=chrome`) in `--use-chrome` runs and reduces default automation flags, but providers can still enforce stricter checks.
+`page2context` now prefers real installed browser channels (for example Chrome via `channel=chrome`) in `--capture chrome` runs and reduces default automation flags, but providers can still enforce stricter checks.
 
 If this happens:
 
-1. Use `--show-chrome` and complete login manually in the visible window.
+1. Use `--open chrome` and complete login manually in the visible window.
 2. Keep using the same project profile folder (`./browser/chrome`) for later captures.
 3. Ensure your system Chrome is installed and up to date.

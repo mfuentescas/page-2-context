@@ -7,6 +7,7 @@ import tempfile
 import threading
 import unittest
 from pathlib import Path
+from typing import Any
 
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
@@ -30,7 +31,11 @@ class CliParamsUnitTests(unittest.TestCase):
             encoding="utf-8",
         )
         handler = http.server.SimpleHTTPRequestHandler
-        cls.httpd = _ReusableTCPServer(("127.0.0.1", 0), lambda *a, **k: handler(*a, directory=str(cls.www_dir), **k))
+
+        def handler_factory(request: Any, client_address: Any, server: _ReusableTCPServer) -> socketserver.BaseRequestHandler:
+            return handler(request, client_address, server, directory=str(cls.www_dir))
+
+        cls.httpd = _ReusableTCPServer(("127.0.0.1", 0), handler_factory)
         cls.port = cls.httpd.server_address[1]
         cls.server_thread = threading.Thread(target=cls.httpd.serve_forever, daemon=True)
         cls.server_thread.start()
@@ -55,10 +60,12 @@ class CliParamsUnitTests(unittest.TestCase):
     def test_help_contains_new_flags(self):
         result = self.run_tool(["--help"])
         self.assertEqual(result.returncode, 0)
-        self.assertIn("--use-chrome", result.stdout)
-        self.assertIn("--clean-chrome", result.stdout)
+        self.assertIn("--capture <browser>", result.stdout)
+        self.assertIn("--open <browser>", result.stdout)
+        self.assertIn("--clean <browser>", result.stdout)
         self.assertIn("--runtime-env-dir", result.stdout)
-        self.assertNotIn("--chrome-profile-dir", result.stdout)
+        self.assertNotIn("--use-chrome", result.stdout)
+        self.assertNotIn("--clean-chrome", result.stdout)
 
     def test_runtime_env_dir_without_url(self):
         result, payload = self.run_tool_json(["--runtime-env-dir", "--json"])
@@ -72,14 +79,20 @@ class CliParamsUnitTests(unittest.TestCase):
         self.assertTrue(os.path.isabs(runtime_dir))
         self.assertTrue(Path(runtime_dir).is_dir())
 
-    def test_multiple_use_flags_fail(self):
-        result, payload = self.run_tool_json(["--url", self.test_url, "--use-chrome", "--use-firefox", "--json"])
+    def test_invalid_capture_value_fails(self):
+        result, payload = self.run_tool_json(["--url", self.test_url, "--capture", "opera", "--json"])
         self.assertEqual(result.returncode, 2)
         self.assertEqual(payload.get("status"), "error")
-        self.assertIn("only one --use-*", payload.get("message", ""))
+        self.assertIn("invalid choice", payload.get("message", ""))
+
+    def test_capture_open_mismatch_fails(self):
+        result, payload = self.run_tool_json(["--url", self.test_url, "--capture", "chrome", "--open", "firefox", "--json"])
+        self.assertEqual(result.returncode, 2)
+        self.assertEqual(payload.get("status"), "error")
+        self.assertIn("must match", payload.get("message", ""))
 
     def test_clean_browser_json_schema(self):
-        result, payload = self.run_tool_json(["--clean-chrome", "--json"])
+        result, payload = self.run_tool_json(["--clean", "chrome", "--json"])
         self.assertEqual(result.returncode, 0)
         self.assertEqual(payload.get("status"), "success")
         self.assertNotIn("history_file", payload)
@@ -99,7 +112,7 @@ class CliParamsUnitTests(unittest.TestCase):
         self.assertEqual(payload.get("browser_profile", {}).get("browser"), "chrome")
 
     def test_use_chromium_capture(self):
-        result, payload = self.run_tool_json(["--url", self.test_url, "--use-chromium", "--json"])
+        result, payload = self.run_tool_json(["--url", self.test_url, "--capture", "chromium", "--json"])
         self.assertEqual(result.returncode, 0)
         self.assertEqual(payload.get("status"), "success")
         self.assertEqual(payload.get("browser_profile", {}).get("browser"), "chromium")

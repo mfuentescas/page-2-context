@@ -93,24 +93,24 @@ fi
 # 2) Help mentions new flags and not legacy profile-dir flags.
 out=""; ec=""
 run_cmd out ec "${PYTHON}" "${SCRIPT}" --help
-if [[ "${out}" == *"--use-chrome"* && "${out}" == *"--clean-chrome"* && "${out}" != *"--chrome-profile-dir"* ]]; then
+if [[ "${out}" == *"--capture <browser>"* && "${out}" == *"--open <browser>"* && "${out}" == *"--clean <browser>"* && "${out}" != *"--chrome-profile-dir"* ]]; then
   ok "help advertises new browser flags"
 else
   fail "help flags mismatch"
 fi
 
-# 3) Invalid multiple --use-* returns bad args.
+# 3) Mismatch between --capture and --open returns bad args.
 out=""; ec=""
-run_cmd out ec "${PYTHON}" "${SCRIPT}" --url "${TEST_URL}" --use-chrome --use-firefox --json
+run_cmd out ec "${PYTHON}" "${SCRIPT}" --url "${TEST_URL}" --capture chrome --open firefox --json
 if [[ "${ec}" == "2" ]] && [[ "$(json_expr "${out}" "obj.get('status')")" == "error" ]]; then
-  ok "multiple --use-* validation"
+  ok "--capture/--open mismatch validation"
 else
-  fail "multiple --use-* validation"
+  fail "--capture/--open mismatch validation"
 fi
 
-# 4) --clean-chrome JSON returns reclaimed fields and no history_file.
+# 4) --clean chrome JSON returns reclaimed fields and no history_file.
 out=""; ec=""
-run_cmd out ec "${PYTHON}" "${SCRIPT}" --clean-chrome --json
+run_cmd out ec "${PYTHON}" "${SCRIPT}" --clean chrome --json
 if [[ "${ec}" == "0" ]] && \
    [[ "$(json_expr "${out}" "obj.get('status')")" == "success" ]] && \
    [[ "$(json_expr "${out}" "'history_file' in obj")" == "False" ]] && \
@@ -120,9 +120,9 @@ else
   fail "clean-browser json schema"
 fi
 
-# 5) --clean-chrome text prints reclaimed info and not history_file.
+# 5) --clean chrome text prints reclaimed info and not history_file.
 out=""; ec=""
-run_cmd out ec "${PYTHON}" "${SCRIPT}" --clean-chrome
+run_cmd out ec "${PYTHON}" "${SCRIPT}" --clean chrome
 if [[ "${ec}" == "0" ]] && [[ "${out}" == *"reclaimed_human:"* ]] && [[ "${out}" != *"history_file:"* ]]; then
   ok "clean-browser text output"
 else
@@ -138,13 +138,13 @@ else
   fail "default capture uses chrome profile"
 fi
 
-# 7) Explicit --use-chromium accepted and reported.
+# 7) Explicit --capture chromium accepted and reported.
 out=""; ec=""
-run_cmd out ec "${PYTHON}" "${SCRIPT}" --url "${TEST_URL}" --use-chromium --json
+run_cmd out ec "${PYTHON}" "${SCRIPT}" --url "${TEST_URL}" --capture chromium --json
 if [[ "${ec}" == "0" ]] && [[ "$(json_expr "${out}" "obj.get('browser_profile', {}).get('browser')")" == "chromium" ]]; then
-  ok "--use-chromium capture"
+  ok "--capture-chromium capture"
 else
-  fail "--use-chromium capture"
+  fail "--capture-chromium capture"
 fi
 
 # 8) --clean-temp output still includes history file (historical cleanup contract).

@@ -46,7 +46,7 @@ Launchers used by AI/users:
 Browser state is stored under local project folders:
 - `./browser/chrome`, `./browser/firefox`, etc.
 - Folders are created automatically when used.
-- Remove them explicitly with `--clean-<browser>` when needed.
+- Remove them explicitly with `--clean <browser>` when needed.
 
 ## Security warning: prompt injection / untrusted pages (important)
 
@@ -74,17 +74,17 @@ The same policy is applied to `--resources-regex` downloads. Blocked external re
 ## Agent contract (must follow)
 
 - Always pass `--json`.
-- `--url` is required unless using clean-only mode (`--clean-temp` and/or `--clean-<browser>` without `--url`) or interactive `--show-*` session mode.
+- `--url` is required unless using clean-only mode (`--clean-temp` and/or `--clean <browser>` without `--url`) or interactive `--open <browser>` session mode.
 - Browser selection:
-  - Use at most one `--use-<browser>` per run.
+  - Use at most one `--capture <browser>` per run.
   - `<browser>` values: `chrome`, `edge`, `brave`, `firefox`, `safari`, `chromium`, `webkit`.
   - If omitted, chrome is used by default.
 - Headed mode:
-  - Use at most one `--show-<browser>` per run.
-  - If both `--use-*` and `--show-*` are set, they must target the same browser.
-  - In interactive mode, `--show-*` runs until the browser window is closed.
+  - Use at most one `--open <browser>` per run.
+  - If both `--capture <browser>` and `--open <browser>` are set, they must target the same browser.
+  - In interactive mode, `--open <browser>` runs until the browser window is closed.
 - Browser profile cleanup:
-  - Use `--clean-<browser>` to remove `./browser/<browser>` folders.
+  - Use `--clean <browser>` to remove `./browser/<browser>` folders.
   - `--clean-temp` does not remove browser folders.
 - External URLs are **disabled by default**. Use `--allow-external-urls` to opt in.
 - If the user asks to **download/retrieve/find CSS/JS/resources** from the page, you **must** pass `--resources-regex`.
@@ -105,10 +105,10 @@ External capture (explicit opt-in, host-scoped regex):
 Authenticated/manual login capture (visible browser):
 
 ```bash
-./run-page2context.sh --url "<URL>" --show-<browser> --json
+./run-page2context.sh --url "<URL>" --open <browser> --json
 ```
 
-`--show-*` is intended for manual login flows because `./browser/<browser>` is a project-local profile and not the user's regular personal browser profile.
+`--open <browser>` is intended for manual login flows because `./browser/<browser>` is a project-local profile and not the user's regular personal browser profile.
 
 Run trusted JS + wait for animations + capture + console log:
 

@@ -57,7 +57,20 @@ class CliParamsUnitTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0)
         self.assertIn("--use-chrome", result.stdout)
         self.assertIn("--clean-chrome", result.stdout)
+        self.assertIn("--runtime-env-dir", result.stdout)
         self.assertNotIn("--chrome-profile-dir", result.stdout)
+
+    def test_runtime_env_dir_without_url(self):
+        result, payload = self.run_tool_json(["--runtime-env-dir", "--json"])
+        self.assertEqual(result.returncode, 0)
+        self.assertEqual(payload.get("status"), "success")
+        self.assertEqual(payload.get("message"), "Runtime environment directory resolved.")
+
+        runtime_dir = payload.get("runtime_env_dir")
+        self.assertIsInstance(runtime_dir, str)
+        self.assertTrue(runtime_dir)
+        self.assertTrue(os.path.isabs(runtime_dir))
+        self.assertTrue(Path(runtime_dir).is_dir())
 
     def test_multiple_use_flags_fail(self):
         result, payload = self.run_tool_json(["--url", self.test_url, "--use-chrome", "--use-firefox", "--json"])

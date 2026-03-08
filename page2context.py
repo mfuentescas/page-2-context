@@ -172,6 +172,7 @@ def _emit(payload: dict) -> None:
     clean_only_messages = {
         "Historical temporary artifacts cleaned.",
         "Browser profile directories cleaned.",
+        "Runtime environment directory resolved.",
     }
     is_clean_only = payload.get("status") == "success" and payload.get("message") in clean_only_messages
 
@@ -261,6 +262,14 @@ def _emit_text(payload: dict) -> None:
                 print("failed_browser_dirs:")
                 for entry in failed_dirs:
                     print(str(entry))
+            return
+
+        if msg == "Runtime environment directory resolved.":
+            runtime_env_dir = payload.get("runtime_env_dir", "")
+            print(f"runtime_env_dir: {runtime_env_dir}")
+            history_file = payload.get("history_file")
+            if history_file:
+                print(f"history_file: {history_file}")
             return
 
         outputs = payload.get("output")
@@ -389,6 +398,7 @@ SYNTAX_HELP = textwrap.dedent("""\
       --post-load-wait-ms <MS>     Extra wait after page load before JS/screenshot (default: 0).
       --resources-regex <REGEX>    Download resources whose URL matches REGEX.
       --output <DIR>               Output folder (default: a new temp dir under /tmp)
+      --runtime-env-dir            Print the full path of the active runtime environment directory (Conda/venv).
       --json                       Machine-readable JSON output (for AI callers)
     Examples:
       python3 page2context.py --help
@@ -396,7 +406,28 @@ SYNTAX_HELP = textwrap.dedent("""\
       python3 page2context.py --url "http://localhost:4200" --use-firefox --json
       python3 page2context.py --url "http://localhost:4200" --show-chrome --json
       python3 page2context.py --clean-temp --clean-chrome --clean-firefox --json
+      python3 page2context.py --runtime-env-dir --json
 """).format(version=__version__)
+
+
+def _resolve_runtime_env_dir() -> str:
+    """Return the active runtime environment directory as an absolute path."""
+    conda_prefix = os.environ.get("CONDA_PREFIX", "").strip()
+    if conda_prefix:
+        return str(pathlib.Path(conda_prefix).expanduser().resolve())
+
+    virtual_env = os.environ.get("VIRTUAL_ENV", "").strip()
+    if virtual_env:
+        return str(pathlib.Path(virtual_env).expanduser().resolve())
+
+    executable = pathlib.Path(sys.executable).resolve()
+    parent_name = executable.parent.name.lower()
+    if parent_name in {"bin", "scripts"}:
+        return str(executable.parent.parent.resolve())
+
+    return str(pathlib.Path(sys.prefix).expanduser().resolve())
+
+
 class _TextArgumentParser(argparse.ArgumentParser):
     def error(self, message: str) -> None:
         _error_exit(EXIT_BAD_ARGS, f"Argument error: {message}",
@@ -455,6 +486,11 @@ def parse_args():
         default=None,
         help="Output folder. If omitted, a new unique temp dir is created.",
     )
+    parser.add_argument(
+        "--runtime-env-dir",
+        action="store_true",
+        help="Return the full path of the active runtime environment directory.",
+    )
     parser.add_argument("--json",              action="store_true",    help="Emit JSON output.")
     args = parser.parse_args()
 
@@ -486,9 +522,9 @@ def parse_args():
         # In --show-* session mode we do not require --url.
         args.url = args.url or None
 
-    if not args.clean_temp and not args.clean_browsers and not args.url and not args.headed:
-        _error_exit(EXIT_BAD_ARGS, "Argument error: --url is required unless using clean-only flags or --show-* session mode.",
-                    hint="Use --show-<browser> to open an interactive browser session, or provide --url for capture.")
+    if not args.clean_temp and not args.clean_browsers and not args.url and not args.headed and not args.runtime_env_dir:
+        _error_exit(EXIT_BAD_ARGS, "Argument error: --url is required unless using clean-only flags, --runtime-env-dir, or --show-* session mode.",
+                    hint="Use --show-<browser> to open an interactive browser session, --runtime-env-dir for environment inspection, or provide --url for capture.")
 
     _json_mode = args.json
     if args.url:
@@ -1281,6 +1317,7 @@ def main() -> None:
     clean_result = None
     temp_clean_result = None
     browser_clean_result = None
+    runtime_env_dir = _resolve_runtime_env_dir()
 
     if args.clean_temp:
         lock_path: Optional[pathlib.Path] = None
@@ -1297,6 +1334,7 @@ def main() -> None:
     if not args.url and not args.headed:
         payload: dict = {
             "version": __version__,
+            "runtime_env_dir": runtime_env_dir,
             "output": [],
             "files": [],
         }
@@ -1310,6 +1348,8 @@ def main() -> None:
             _success("Historical temporary artifacts cleaned.", **payload)
         elif browser_clean_result is not None:
             _success("Browser profile directories cleaned.", **payload)
+        elif args.runtime_env_dir:
+            _success("Runtime environment directory resolved.", **payload)
         return
 
     try:
@@ -1351,6 +1391,7 @@ def main() -> None:
                     "Headed browser session finished.",
                     version=__version__,
                     url=args.url,
+                    runtime_env_dir=runtime_env_dir,
                     browser_profile_source=str(profile_source_dir),
                     chrome_profile_source=str(profile_source_dir) if selected_profile_key == "chrome" else "",
                     browser_profile={
@@ -1371,6 +1412,7 @@ def main() -> None:
         result: dict = {
             "version": __version__,
             "url": args.url,
+            "runtime_env_dir": runtime_env_dir,
             "browser_profile_source": str(profile_source_dir),
             "chrome_profile_source": str(profile_source_dir) if selected_profile_key == "chrome" else "",
             "browser_profile": {
@@ -1609,6 +1651,7 @@ def main() -> None:
         "browser_profile_source": str(profile_source_dir) if profile_source_dir is not None else "",
         # Backward compatibility: keep chrome_profile_source behavior (only populated in chrome mode)
         "chrome_profile_source": chrome_profile_source_value,
+        "runtime_env_dir":      runtime_env_dir,
     }
     if clean_result is not None:
         result["cleanup_before_run"] = clean_result

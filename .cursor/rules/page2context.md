@@ -52,14 +52,14 @@ python3 page2context.py --url "<URL>" --json
 ```bash
 python3 page2context.py \
   --clean-temp \
-  --clean-chrome \
+  --clean-<browser> \
   --url "<URL>" \
   --allow-external-urls "<REGEX>" \
   --size "<WIDTHxHEIGHT>" \
   --crop "<COLSxROWS:TILE[,TILE]>" \
   --console-log \
-  --use-chrome \
-  --show-chrome \
+  --use-<browser> \
+  --show-<browser> \
   --run-js-file "<PATH>" \
   --post-load-wait-ms "<MS>" \
   --resources-regex "<REGEX>" \
@@ -67,25 +67,22 @@ python3 page2context.py \
   --json
 ```
 
+`<browser>` values: `chrome`, `edge`, `brave`, `firefox`, `safari`, `chromium`, `webkit`.
+
 ### Browser selection
 
-Use one `--use-*` browser flag (optional). If omitted, Chrome is used by default.
+Use one `--use-<browser>` flag (optional). If omitted, Chrome is used by default.
 
 ```bash
-python3 page2context.py --url "<URL>" --json
+python3 page2context.py --url "<URL>" --use-<browser> --json
 python3 page2context.py --url "<URL>" --use-firefox --json
-python3 page2context.py --url "<URL>" --use-edge --json
-python3 page2context.py --url "<URL>" --use-brave --json
-python3 page2context.py --url "<URL>" --use-safari --json
-python3 page2context.py --url "<URL>" --use-chromium --json
-python3 page2context.py --url "<URL>" --use-webkit --json
 ```
 
-Use one `--show-*` flag to run headed (visible) mode. If both `--use-*` and `--show-*` are set, they must target the same browser.
+Use one `--show-<browser>` flag to run headed (visible) mode. If both `--use-*` and `--show-*` are set, they must target the same browser.
 In interactive terminals, `--show-*` runs until the browser window is closed.
 
 ```bash
-python3 page2context.py --show-chrome --json
+python3 page2context.py --show-<browser> --json
 python3 page2context.py --url "<URL>" --use-firefox --show-firefox --json
 ```
 
@@ -113,9 +110,10 @@ python3 page2context.py \
 
 ### Cleanup helpers
 
-`--clean-temp` only removes historical `p2cxt_*` artifacts. Browser profile folders are cleaned separately:
+`--clean-temp` only removes historical `p2cxt_*` artifacts. Browser profile folders are cleaned separately with `--clean-<browser>`.
 
 ```bash
+python3 page2context.py --clean-<browser> --json
 python3 page2context.py --clean-chrome --clean-firefox --json
 ```
 

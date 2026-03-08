@@ -114,6 +114,7 @@ Running with no arguments prints full usage help.
 | `--post-load-wait-ms <ms>` | ❌ | `0` | Extra wait after page load and before `--run-js-file`/screenshot (useful for animations) |
 | `--resources-regex <regex>` | ❌ | *(none)* | Download matching resources seen in HTML or browser traffic. **Use this whenever you ask to retrieve CSS/JS/assets (for example `copilot*` CSS).** |
 | `--output <dir>` | ❌ | *(auto)* | Output folder. If omitted, a **new unique temp directory** is created (typically under `/tmp`). |
+| `--runtime-env-dir` | ❌ | *(flag)* | Return the full absolute path of the active runtime environment directory (Conda/venv), not the Python executable path. |
 | `--json` | ❌ | *(flag)* | Machine-readable JSON output (for AI callers) |
 
 ---
@@ -121,6 +122,12 @@ Running with no arguments prints full usage help.
 ### Examples
 
 ```bash
+# Print only the active runtime environment directory (full absolute path)
+python3 page2context.py --runtime-env-dir
+
+# Runtime environment directory in JSON mode
+python3 page2context.py --runtime-env-dir --json
+
 # Basic capture (chrome local profile by default) -> prints absolute created artifact paths
 # (writes into a new unique temp folder by default)
 python3 page2context.py --url "http://localhost:4200/"

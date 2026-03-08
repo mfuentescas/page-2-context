@@ -52,7 +52,7 @@ Example screenshot from that flow:
 ## Requirements
 
 - Python 3.11+
-- Chromium (installed automatically via `make setup`)
+- Chromium (installed by the installer script)
 - Other browsers optional — install only what you need
 
 ---
@@ -62,36 +62,26 @@ Example screenshot from that flow:
 ```bash
 git clone https://github.com/mfuentescas/page-2-context.git
 cd page2context
-make setup
+./install-page2context.sh
 ```
 
-`make setup` installs Python dependencies and Chromium — the minimum required to run the tool.
+Windows users:
 
-### Installing additional browsers
-
-To capture pages using Firefox, Edge, Brave, or WebKit profiles, the corresponding Playwright browser must be installed. Run the interactive installer to choose which ones you need:
-
-```bash
-make setup-browsers   # prompts Y/n for each browser (default: Y)
+```bat
+install-page2context.cmd
 ```
 
-Or install them individually:
+Public launchers:
 
-```bash
-make setup-firefox    # Firefox
-make setup-edge       # Microsoft Edge
-make setup-webkit     # WebKit (Safari engine)
-make setup-brave      # Brave (uses Chromium engine — same as make setup-chromium)
-```
-
-> If you see an error like `Executable doesn't exist at ...firefox...`, just run `make setup-firefox` (or the corresponding command for your browser).
+- Linux/macOS: `./run-page2context.sh`
+- Windows: `run-page2context.cmd`
 
 ---
 
 ## Usage
 
 ```bash
-python3 page2context.py [--url "<URL>"] [OPTIONS]
+./run-page2context.sh [--url "<URL>"] [OPTIONS]
 ```
 
 Running with no arguments prints full usage help.
@@ -123,62 +113,62 @@ Running with no arguments prints full usage help.
 
 ```bash
 # Print only the active runtime environment directory (full absolute path)
-python3 page2context.py --runtime-env-dir
+./run-page2context.sh --runtime-env-dir
 
 # Runtime environment directory in JSON mode
-python3 page2context.py --runtime-env-dir --json
+./run-page2context.sh --runtime-env-dir --json
 
 # Basic capture (chrome local profile by default) -> prints absolute created artifact paths
 # (writes into a new unique temp folder by default)
-python3 page2context.py --url "http://localhost:4200/"
+./run-page2context.sh --url "http://localhost:4200/"
 
 # Write outputs into a stable folder you control
-python3 page2context.py --url "http://localhost:4200/" --output page2context
+./run-page2context.sh --url "http://localhost:4200/" --output page2context
 
 # Clean only historical temporary artifacts (no --url needed)
-python3 page2context.py --clean-temp
+./run-page2context.sh --clean-temp
 
 # Clean one or more local browser profile directories (no --url needed)
-python3 page2context.py --clean-chrome --clean-firefox
+./run-page2context.sh --clean-chrome --clean-firefox
 
 # Clean first, then capture normally
-python3 page2context.py --clean-temp --url "http://localhost:4200/"
+./run-page2context.sh --clean-temp --url "http://localhost:4200/"
 
 # Use Firefox local profile
-python3 page2context.py --url "http://localhost:4200/" --use-firefox
+./run-page2context.sh --url "http://localhost:4200/" --use-firefox
 
 # Show Chrome browser window only (interactive session mode, no URL required)
-python3 page2context.py --show-chrome
+./run-page2context.sh --show-chrome
 
 # Show Chrome browser window and open an initial URL (still interactive session mode)
-python3 page2context.py --url "http://localhost:4200/" --show-chrome
+./run-page2context.sh --url "http://localhost:4200/" --show-chrome
 
 # Use and show Firefox explicitly (headed mode)
-python3 page2context.py --url "http://localhost:4200/" --use-firefox --show-firefox
+./run-page2context.sh --url "http://localhost:4200/" --use-firefox --show-firefox
 
 # Custom viewport
-python3 page2context.py --url "http://localhost:4200/" --size 1920x1080
+./run-page2context.sh --url "http://localhost:4200/" --size 1920x1080
 
 # Capture only specific tiles of a long page
-python3 page2context.py --url "http://localhost:4200/" --crop "3x9:1,27"
+./run-page2context.sh --url "http://localhost:4200/" --crop "3x9:1,27"
 
 # Capture browser console/page errors
-python3 page2context.py --url "http://localhost:4200/" --console-log
+./run-page2context.sh --url "http://localhost:4200/" --console-log
 
 # Execute custom JavaScript inside the page and wait until it finishes
-python3 page2context.py --url "http://localhost:4200/" --run-js-file "./script.js"
+./run-page2context.sh --url "http://localhost:4200/" --run-js-file "./script.js"
 
 # Wait 1200ms after load (before JS/screenshot) to let UI animations settle
-python3 page2context.py --url "http://localhost:4200/" --post-load-wait-ms 1200 --run-js-file "./script.js"
+./run-page2context.sh --url "http://localhost:4200/" --post-load-wait-ms 1200 --run-js-file "./script.js"
 
 # Example script: log browser cookies from JS
-python3 page2context.py --url "http://localhost:4200/" --console-log --run-js-file "./test/example_log_cookies.js"
+./run-page2context.sh --url "http://localhost:4200/" --console-log --run-js-file "./test/example_log_cookies.js"
 
 # Download only CSS/JS assets seen in source/network
-python3 page2context.py --url "http://localhost:4200/" --resources-regex "\\.(css|js)(\\?|$)"
+./run-page2context.sh --url "http://localhost:4200/" --resources-regex "\\.(css|js)(\\?|$)"
 
 # Download only copilot* CSS from GitHub (external URL regex policy)
-python3 page2context.py --url "https://github.com" --allow-external-urls "^https://([^/]+\\.)?(github\\.com|githubassets\\.com)/" --post-load-wait-ms 5000 --crop "4x10:3" --resources-regex "(?i)/copilot[^/]*\\.css(\\?|$)" --output "./tmp/github_copilot_css" --json
+./run-page2context.sh --url "https://github.com" --allow-external-urls "^https://([^/]+\\.)?(github\\.com|githubassets\\.com)/" --post-load-wait-ms 5000 --crop "4x10:3" --resources-regex "(?i)/copilot[^/]*\\.css(\\?|$)" --output "./tmp/github_copilot_css" --json
 
 # Compare downloaded copilot* CSS with your local file
 diff -u ./tmp/github_copilot_css/p2cxt_resource_001.css ./path/to/local/copilot.css
@@ -526,7 +516,7 @@ In interactive mode, `--show-<browser>` runs until you close the browser window.
 
 ## Using with GitHub Copilot / Cursor
 
-1. Run `page2context.py` against your target page
+1. Run `./run-page2context.sh` (or `run-page2context.cmd` on Windows) against your target page
 2. Open `page2context/p2cxt_context.md` in your IDE
 3. Reference it in Copilot Chat:
    - Drag the file into chat, or type `#file:page2context/p2cxt_context.md`
@@ -540,14 +530,14 @@ In interactive mode, `--show-<browser>` runs until you close the browser window.
 This is usually an IDE safety policy issue, not a `page2context` failure. Common causes:
 
 - The IDE requires manual approval for command execution and the command was denied.
-- The invoked folder does not have the expected runtime/dependencies. Run `make setup`.
+- The invoked folder does not have the expected runtime/dependencies. Run `./install-page2context.sh`.
 - Copilot tried to run from a different folder than your trusted workspace (for example `~/.agents/skills/page-2-context` instead of your project folder).
 
 Recommended fix:
 
 ```bash
 cd "~/Documents/docs/+Personal/MySources/generate_markdown_from_website"
-python3 page2context.py --show-chrome --json
+./run-page2context.sh --show-chrome --json
 ```
 
 Then close the interactive window and run your capture command from the same project folder so the same local profile (`./browser/chrome`) is reused.

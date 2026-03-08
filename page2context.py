@@ -1144,18 +1144,11 @@ def _browser_install_hint(exc: "PlaywrightError", browser_key: str) -> Optional[
     raw = str(exc)
     if "Executable doesn't exist" in raw or "executable doesn't exist" in raw:
         pw_engine = PROFILE_KEY_TO_BROWSER_TYPE.get(browser_key, browser_key)
-        make_target_map = {
-            "chrome": "setup-chromium", "chromium": "setup-chromium",
-            "edge": "setup-edge", "brave": "setup-brave",
-            "firefox": "setup-firefox",
-            "safari": "setup-webkit", "webkit": "setup-webkit",
-        }
-        make_target = make_target_map.get(browser_key, f"setup-{pw_engine}")
         py = sys.executable
         return (
             f"Browser '{browser_key}' is not installed for Playwright. "
             f"Run:  {py} -m playwright install {pw_engine}  "
-            f"(or:  make {make_target})"
+            "(or run: ./install-page2context.sh)"
         )
     return None
 

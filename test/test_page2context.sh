@@ -3,6 +3,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SCRIPT="${ROOT_DIR}/page2context.py"
+LAUNCHER_SH="${ROOT_DIR}/run-page2context.sh"
 if [[ -x "${ROOT_DIR}/.venv/bin/python3" ]]; then
   PYTHON="${ROOT_DIR}/.venv/bin/python3"
 else
@@ -80,7 +81,16 @@ trap cleanup EXIT
 mkdir -p "${TMP_DIR}"
 start_server
 
-# 1) Help mentions new flags and not legacy profile-dir flags.
+# 1) Launcher smoke test with JSON output.
+out=""; ec=""
+run_cmd out ec "${LAUNCHER_SH}" --runtime-env-dir --json
+if [[ "${ec}" == "0" ]] && [[ "$(json_expr "${out}" "obj.get('status')")" == "success" ]]; then
+  ok "launcher runtime-env-dir"
+else
+  fail "launcher runtime-env-dir"
+fi
+
+# 2) Help mentions new flags and not legacy profile-dir flags.
 out=""; ec=""
 run_cmd out ec "${PYTHON}" "${SCRIPT}" --help
 if [[ "${out}" == *"--use-chrome"* && "${out}" == *"--clean-chrome"* && "${out}" != *"--chrome-profile-dir"* ]]; then
@@ -89,7 +99,7 @@ else
   fail "help flags mismatch"
 fi
 
-# 2) Invalid multiple --use-* returns bad args.
+# 3) Invalid multiple --use-* returns bad args.
 out=""; ec=""
 run_cmd out ec "${PYTHON}" "${SCRIPT}" --url "${TEST_URL}" --use-chrome --use-firefox --json
 if [[ "${ec}" == "2" ]] && [[ "$(json_expr "${out}" "obj.get('status')")" == "error" ]]; then
@@ -98,7 +108,7 @@ else
   fail "multiple --use-* validation"
 fi
 
-# 3) --clean-chrome JSON returns reclaimed fields and no history_file.
+# 4) --clean-chrome JSON returns reclaimed fields and no history_file.
 out=""; ec=""
 run_cmd out ec "${PYTHON}" "${SCRIPT}" --clean-chrome --json
 if [[ "${ec}" == "0" ]] && \
@@ -110,7 +120,7 @@ else
   fail "clean-browser json schema"
 fi
 
-# 4) --clean-chrome text prints reclaimed info and not history_file.
+# 5) --clean-chrome text prints reclaimed info and not history_file.
 out=""; ec=""
 run_cmd out ec "${PYTHON}" "${SCRIPT}" --clean-chrome
 if [[ "${ec}" == "0" ]] && [[ "${out}" == *"reclaimed_human:"* ]] && [[ "${out}" != *"history_file:"* ]]; then
@@ -119,7 +129,7 @@ else
   fail "clean-browser text output"
 fi
 
-# 5) Local capture default browser (chrome profile) works on local server.
+# 6) Local capture default browser (chrome profile) works on local server.
 out=""; ec=""
 run_cmd out ec "${PYTHON}" "${SCRIPT}" --url "${TEST_URL}" --json
 if [[ "${ec}" == "0" ]] && [[ "$(json_expr "${out}" "obj.get('status')")" == "success" ]] && [[ "$(json_expr "${out}" "obj.get('browser_profile', {}).get('browser')")" == "chrome" ]]; then
@@ -128,7 +138,7 @@ else
   fail "default capture uses chrome profile"
 fi
 
-# 6) Explicit --use-chromium accepted and reported.
+# 7) Explicit --use-chromium accepted and reported.
 out=""; ec=""
 run_cmd out ec "${PYTHON}" "${SCRIPT}" --url "${TEST_URL}" --use-chromium --json
 if [[ "${ec}" == "0" ]] && [[ "$(json_expr "${out}" "obj.get('browser_profile', {}).get('browser')")" == "chromium" ]]; then
@@ -137,7 +147,7 @@ else
   fail "--use-chromium capture"
 fi
 
-# 7) --clean-temp output still includes history file (historical cleanup contract).
+# 8) --clean-temp output still includes history file (historical cleanup contract).
 out=""; ec=""
 run_cmd out ec "${PYTHON}" "${SCRIPT}" --clean-temp --json
 if [[ "${ec}" == "0" ]] && [[ "$(json_expr "${out}" "'history_file' in obj")" == "True" ]]; then

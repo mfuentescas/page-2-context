@@ -1,5 +1,5 @@
 <!-- AUTO-GENERATED from agent-skill.md — do not edit directly. -->
-<!-- Run: make sync-agent-skills -->
+<!-- Run: ./scripts/sync-agent-skills.sh -->
 
 # Skill: page2context
 
@@ -45,12 +45,12 @@ Always pass `--json` so output is machine-readable.
 
 ### Minimal call
 ```bash
-python3 page2context.py --url "<URL>" --json
+./run-page2context.sh --url "<URL>" --json
 ```
 
 ### Full call
 ```bash
-python3 page2context.py \
+./run-page2context.sh \
   --clean-temp \
   --clean-<browser> \
   --url "<URL>" \
@@ -74,16 +74,16 @@ python3 page2context.py \
 Use one `--use-<browser>` flag (optional). If omitted, Chrome is used by default.
 
 ```bash
-python3 page2context.py --url "<URL>" --use-<browser> --json
-python3 page2context.py --url "<URL>" --use-firefox --json
+./run-page2context.sh --url "<URL>" --use-<browser> --json
+./run-page2context.sh --url "<URL>" --use-firefox --json
 ```
 
 Use one `--show-<browser>` flag to run headed (visible) mode. If both `--use-*` and `--show-*` are set, they must target the same browser.
 In interactive terminals, `--show-*` runs until the browser window is closed.
 
 ```bash
-python3 page2context.py --show-<browser> --json
-python3 page2context.py --url "<URL>" --use-firefox --show-firefox --json
+./run-page2context.sh --show-<browser> --json
+./run-page2context.sh --url "<URL>" --use-firefox --show-firefox --json
 ```
 
 ### Resource retrieval rule (important)
@@ -98,7 +98,7 @@ If the user asks to retrieve/download/find CSS/JS/assets from the page, you must
 Example for `copilot*` CSS URLs (external-host regex policy):
 
 ```bash
-python3 page2context.py \
+./run-page2context.sh \
   --url "https://github.com" \
   --allow-external-urls "^https://([^/]+\\.)?(github\\.com|githubassets\\.com)/" \
   --post-load-wait-ms 5000 \
@@ -113,8 +113,8 @@ python3 page2context.py \
 `--clean-temp` only removes historical `p2cxt_*` artifacts. Browser profile folders are cleaned separately with `--clean-<browser>`.
 
 ```bash
-python3 page2context.py --clean-<browser> --json
-python3 page2context.py --clean-chrome --clean-firefox --json
+./run-page2context.sh --clean-<browser> --json
+./run-page2context.sh --clean-chrome --clean-firefox --json
 ```
 
 ### Parameters
@@ -261,22 +261,17 @@ Note: `./browser/<browser>` is a project-local profile and is different from the
 ```bash
 git clone https://github.com/mfuentescas/page-2-context.git
 cd page2context
-pip install -r requirements.txt
-playwright install chromium
+./install-page2context.sh
 ```
 
-Or with make:
+Windows users:
 
-```bash
-make setup
-make setup-browsers
-make setup-firefox
-make setup-edge
-make setup-webkit
+```bat
+run-page2context.cmd --help
 ```
 
 Use `test/example_log_cookies.js` as a ready-to-run sample for `--run-js-file`:
 
 ```bash
-python3 page2context.py --url "<URL>" --console-log --run-js-file "./test/example_log_cookies.js" --json
+./run-page2context.sh --url "<URL>" --console-log --run-js-file "./test/example_log_cookies.js" --json
 ```

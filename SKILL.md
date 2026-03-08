@@ -22,26 +22,24 @@ Use this skill if you need **visual context + DOM** (not just HTML source) and w
 
 ## Setup (important)
 
-If this skill is used from another project (via `npx skills`), Python/Playwright dependencies may not be installed yet.
+If this skill is used from another project (via `npx skills`), runtime dependencies may not be installed yet.
 
-**Preferred setup (do this): run the Makefile from this repo root. Do not invent extra pip packages.**
-
-```bash
-make setup
-```
-
-Optional interactive installs (default: Yes):
+Run the installer script for your OS from this repo root:
 
 ```bash
-make setup-browsers
+./install-page2context.sh
 ```
 
-Fallback if `make` is not available:
+Windows users:
 
-```bash
-python3 -m pip install -r requirements.txt
-python3 -m playwright install chromium
+```bat
+install-page2context.cmd
 ```
+
+Launchers used by AI/users:
+
+- Linux/macOS: `./run-page2context.sh`
+- Windows: `run-page2context.cmd`
 
 ## Safety (browser profiles)
 
@@ -95,19 +93,19 @@ The same policy is applied to `--resources-regex` downloads. Blocked external re
 ## Minimal usage
 
 ```bash
-python3 page2context.py --url "<URL>" --json
+./run-page2context.sh --url "<URL>" --json
 ```
 
 External capture (explicit opt-in, host-scoped regex):
 
 ```bash
-python3 page2context.py --url "https://example.com" --allow-external-urls "^https://([^/]+\\.)?example\\.com/" --json
+./run-page2context.sh --url "https://example.com" --allow-external-urls "^https://([^/]+\\.)?example\\.com/" --json
 ```
 
 Authenticated/manual login capture (visible browser):
 
 ```bash
-python3 page2context.py --url "<URL>" --show-<browser> --json
+./run-page2context.sh --url "<URL>" --show-<browser> --json
 ```
 
 `--show-*` is intended for manual login flows because `./browser/<browser>` is a project-local profile and not the user's regular personal browser profile.
@@ -115,13 +113,13 @@ python3 page2context.py --url "<URL>" --show-<browser> --json
 Run trusted JS + wait for animations + capture + console log:
 
 ```bash
-python3 page2context.py --url "<URL>" --post-load-wait-ms 1200 --run-js-file "./test/example_log_cookies.js" --console-log --json
+./run-page2context.sh --url "<URL>" --post-load-wait-ms 1200 --run-js-file "./test/example_log_cookies.js" --console-log --json
 ```
 
 Retrieve `copilot*` CSS from GitHub and compare with local project CSS:
 
 ```bash
-python3 page2context.py \
+./run-page2context.sh \
   --url "https://github.com" \
   --allow-external-urls "^https://([^/]+\\.)?(github\\.com|githubassets\\.com)/" \
   --post-load-wait-ms 5000 \
@@ -139,7 +137,7 @@ diff -u ./tmp/github_copilot_css/p2cxt_resource_001.css ./path/to/local/copilot.
 
 ## Agent workflow (deterministic)
 
-1. If dependencies are missing, run `make setup` in this repo first.
+1. If dependencies are missing, run `./install-page2context.sh` first (or `install-page2context.cmd` on Windows).
 2. Run with `--json`.
 3. If `status != "success"`, report `message/reason/exit_code` and stop.
 4. Read `p2cxt_context.md` -> then `p2cxt_html.html` -> then `p2cxt_console.log` (if present).
@@ -151,10 +149,10 @@ diff -u ./tmp/github_copilot_css/p2cxt_resource_001.css ./path/to/local/copilot.
 If logs mention `Executable doesn't exist at ...`, install the missing Playwright browser, e.g.:
 
 ```bash
-python3 -m playwright install firefox
+./.venv/bin/python3 -m playwright install firefox
 ```
 
-(or use the Makefile helper like `make setup-firefox`).
+(or use the installer script like `./install-page2context.sh`).
 
 If you get `exit_code=3` for a `http://localhost:...` URL, this is usually **not** a Python dependency issue:
 - Ensure your dev server is running (e.g. `curl -I http://localhost:4200`).

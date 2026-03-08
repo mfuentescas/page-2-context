@@ -41,6 +41,8 @@ Prompt used:
 
 > Use page2context to load github.com, wait 5 seconds, then capture tile #5 of a 4×10 grid of the page and retrieve the copilot* CSS file. Show me the capture and compare that CSS file with the one existing in the project and show me the differences.
 
+> Important for this example: the browser profile was already logged in to GitHub beforehand. To prepare that state, run an interactive session first with `--show-chrome`, complete login, close the window, and then run the capture command.
+
 Example screenshot from that flow:
 
 ![Prompt-driven GitHub tile capture and copilot CSS retrieval example](readme_example_github_tile5_copilot_css.png)
@@ -526,6 +528,23 @@ In interactive mode, `--show-<browser>` runs until you close the browser window.
    - *"What CSS class controls the hero section padding?"*
    - *"Rewrite this component so its layout matches tile 1."*
 
+### If Copilot says a command was blocked
+
+This is usually an IDE safety policy issue, not a `page2context` failure. Common causes:
+
+- The IDE requires manual approval for command execution and the command was denied.
+- The invoked folder does not have the expected runtime/dependencies. Run `make setup`.
+- Copilot tried to run from a different folder than your trusted workspace (for example `~/.agents/skills/page-2-context` instead of your project folder).
+
+Recommended fix:
+
+```bash
+cd "~/Documents/docs/+Personal/MySources/generate_markdown_from_website"
+python3 page2context.py --show-chrome --json
+```
+
+Then close the interactive window and run your capture command from the same project folder so the same local profile (`./browser/chrome`) is reused.
+
 ### Two practical prompts you can copy/paste
 
 1) Capture a specific tile (useful for long pages)
@@ -548,4 +567,3 @@ If this happens:
 1. Use `--show-chrome` and complete login manually in the visible window.
 2. Keep using the same project profile folder (`./browser/chrome`) for later captures.
 3. Ensure your system Chrome is installed and up to date.
-
